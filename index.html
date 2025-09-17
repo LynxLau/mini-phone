@@ -22,33 +22,27 @@
   </style>
 <style>
   html, body {
-    height: 100%;
     margin: 0;
-    overflow: hidden;              /* 禁止网页滚动条 */
+    height: 100%;
+    overflow: hidden;
     background: #000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
   }
-  /* 居中容器，铺满视窗 */
-  #fit-viewport {
-    position: fixed;
-    inset: 0;
-    display: grid;
-    place-items: center;
-    pointer-events: auto;
-  }
-  /* 这个盒子就是整部“小手机”的参考尺寸 */
-  #phone-scale {
-    width: 420px;   /* 你的手机设计宽度（和 DeviceFrame 接近）*/
-    height: 844px;  /* 你的手机设计高度（和 DeviceFrame 接近）*/
-    transform-origin: center center;
-    overflow: hidden;               /* 防止内部溢出 */
+
+  /* 让小手机始终贴满高度，宽度自动等比 */
+  #phone-frame {
+    height: 100%;
+    aspect-ratio: 420 / 844; /* 你的手机原始宽高比例 */
+    max-width: 100%;
+    overflow: hidden;
   }
 </style>
 </head>
 <body>
-  <div id="fit-viewport">
-  <div id="phone-scale">
-    <div id="root"></div>
-  </div>
+  <div id="phone-frame">
+  <div id="root"></div>
 </div>
   <div id="errbox"></div>
 

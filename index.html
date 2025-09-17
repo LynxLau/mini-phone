@@ -4,10 +4,11 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Mini Phone — Goth Frame</title>
+  <!-- 更稳的 CDN：jsDelivr，必要时会自动回退到 unpkg -->
+  <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <style>
     :root { --accent: #8e86ff; --glass: rgba(255,255,255,0.06); }
     html, body, #root { height: 100%; }
@@ -17,14 +18,30 @@
 <body>
   <div id="root"></div>
 
+  <!-- 如果 jsDelivr 加载失败，3.5 秒后自动尝试 unpkg 作为后备 -->
+  <script>
+    (function ensureGlobals(){
+      var maxWait = 3500;
+      function ready(){ return window.React && window.ReactDOM && window.Babel; }
+      function inject(src){ var s=document.createElement('script'); s.src=src; s.async=false; document.head.appendChild(s); }
+      setTimeout(function(){
+        if (!ready()) {
+          inject('https://unpkg.com/react@18/umd/react.production.min.js');
+          inject('https://unpkg.com/react-dom@18/umd/react-dom.production.min.js');
+          inject('https://unpkg.com/@babel/standalone/babel.min.js');
+        }
+      }, maxWait);
+    })();
+  </script>
+
   <script type="text/babel">
     const { useEffect, useMemo, useRef, useState } = React;
 
     function useLocalStorage(key, initial){
-      const [state,setState] = useState(()=>{
+      const [state,setState] = React.useState(()=>{
         try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : initial } catch { return initial }
       });
-      useEffect(()=>{ try{ localStorage.setItem(key, JSON.stringify(state)) }catch{} }, [key,state]);
+      React.useEffect(()=>{ try{ localStorage.setItem(key, JSON.stringify(state)) }catch{} }, [key,state]);
       return [state,setState];
     }
 
@@ -36,32 +53,17 @@
       const [currentId, setCurrentId] = useLocalStorage("mp_current", null);
       const [messages, setMessages] = useLocalStorage("mp_msgs", [botMsg("我在。把耳机戴上, 边听边说。")]);
       const [input, setInput] = useState("");
-
-      const [settings, setSettings] = useLocalStorage("mp_settings", {
-        apiBase: "https://api.openai.com",
-        apiKey: "",
-        model: "",
-        systemPrompt: "",
-        characterName: "Valuri",
-        avatar: "",
-        temperature: 0.6
-      });
+      const [settings, setSettings] = useLocalStorage("mp_settings", { apiBase:"https://api.openai.com", apiKey:"", model:"", systemPrompt:"", characterName:"Valuri", avatar:"", temperature:0.6 });
       const [aiMode, setAiMode] = useLocalStorage("mp_aiMode", true);
-      const [view, setView] = useState("home"); // home | chat | player | settings
+      const [view, setView] = useState("home");
 
-      useEffect(()=>{
-        const r = document.documentElement.style;
-        r.setProperty("--accent", theme.accent);
-        r.setProperty("--glass", theme.glass ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.0)");
-      },[theme]);
-
+      useEffect(()=>{ const r=document.documentElement.style; r.setProperty("--accent", theme.accent); r.setProperty("--glass", theme.glass ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.0)"); },[theme]);
       useEffect(()=>{ if(!currentId && playlist[0]) setCurrentId(playlist[0].id); }, [currentId, playlist, setCurrentId]);
-
       const apiOn = Boolean(settings.apiKey && settings.model);
 
       return (
         <div className="min-h-screen w-full relative" style={bgStyle(theme)}>
-          <div className="absolute inset-0" style={{ backdropFilter: \`blur(\${theme.blur}px)\` }} />
+          <div className="absolute inset-0" style={{ backdropFilter: `blur(${theme.blur}px)` }} />
           <div className="relative z-10 mx-auto max-w-5xl px-4 py-8">
             <TopBar theme={theme} setTheme={setTheme} onSettings={()=>setView("settings")} apiOn={apiOn} />
             <div className="mt-6 grid place-items-center">
@@ -85,7 +87,7 @@
             <div className="flex items-center gap-3">
               <span className="text-sm px-2 py-1 rounded-full border border-white/10 bg-white/5">Mini Phone</span>
               <span className="text-xs opacity-70">Chat + Music</span>
-              <span className={\`text-[11px] px-2 py-0.5 rounded-full \${apiOn ? "bg-green-500/20 text-green-300" : "bg-white/10 text-white/70"}\`}>{apiOn ? "API ON" : "API OFF"}</span>
+              <span className={`text-[11px] px-2 py-0.5 rounded-full ${apiOn ? "bg-green-500/20 text-green-300" : "bg-white/10 text-white/70"}`}>{apiOn ? "API ON" : "API OFF"}</span>
             </div>
             <div className="flex items-center gap-3">
               <button onClick={onSettings} className="text-xs px-2 py-1 rounded bg-white/10 border border-white/10 hover:bg-white/15">设置</button>
@@ -119,8 +121,8 @@
             <div className="absolute -left-1 top-44 h-10 w-[3px] rounded-full bg-white/15" />
             <div className="absolute -right-1 top-36 h-24 w-[3px] rounded-full bg-white/15" />
             <div className="relative rounded-[36px] overflow-hidden ring-1 ring-white/10 bg-black/80">
-              <div className="pointer-events-none absolute inset-0" style={{ backgroundImage:"radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px)", backgroundSize:"3px 3px", opacity:0.35 }} />
-              <div className="pointer-events-none absolute inset-0" style={{ background:"radial-gradient(120% 120% at 50% 10%, transparent 30%, rgba(0,0,0,0.55) 85%)" }} />
+              <div className="pointer-events-none absolute inset-0" style={{ backgroundImage: "radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px)", backgroundSize: "3px 3px", opacity: 0.35 }} />
+              <div className="pointer-events-none absolute inset-0" style={{ background: "radial-gradient(120% 120% at 50% 10%, transparent 30%, rgba(0,0,0,0.55) 85%)" }} />
               <div className="absolute left-1/2 -translate-x-1/2 top-0 h-7 w-40 bg-black rounded-b-2xl shadow-[0_6px_12px_rgba(0,0,0,0.6)]" />
               <div className="absolute left-[calc(50%-56px)] top-2 w-2.5 h-2.5 rounded-full bg-zinc-700" />
               <div className="absolute left-1/2 -translate-x-1/2 top-2 w-16 h-1.5 rounded bg-zinc-700" />
@@ -138,7 +140,7 @@
       return (
         <div className="flex items-center justify-between px-4 pt-8 pb-2 text-xs text-white/80 select-none">
           <span>{clock}</span>
-          <span className={\`px-2 py-0.5 rounded-full \${apiOn ? "bg-green-500/20 text-green-300" : "bg-white/10"}\`}>{apiOn ? "API ON" : "API OFF"}</span>
+          <span className={`px-2 py-0.5 rounded-full ${apiOn ? "bg-green-500/20 text-green-300" : "bg-white/10"}`}>{apiOn ? "API ON" : "API OFF"}</span>
         </div>
       );
     }
@@ -160,12 +162,10 @@
               </div>
             </div>
           </div>
-
           <div className="grid grid-cols-2 gap-3">
             <GlassCard className="h-28" />
             <GlassCard className="h-28" />
           </div>
-
           <div className="grid grid-cols-3 gap-3 py-1">
             {[
               {k:"music",label:"音乐",on:onOpenPlayer,emoji:"🎵"},
@@ -176,7 +176,6 @@
               {k:"link",label:"链接",on:()=>{},emoji:"🔗"},
             ].map(it=>(<AppIcon key={it.k} label={it.label} onClick={it.on}>{it.emoji}</AppIcon>))}
           </div>
-
           <div className="mt-1 px-3 py-2 rounded-3xl bg-white/10 border border-white/10 backdrop-blur flex items-center justify-around">
             <DockIcon label="音乐" onClick={onOpenPlayer}><span className="text-xl">🎵</span></DockIcon>
             <DockIcon label="聊天" onClick={onOpenChat}><span className="text-xl">💬</span></DockIcon>
@@ -186,13 +185,13 @@
       );
     }
 
-    function GlassCard({ className="" }){ return <div className={\`rounded-3xl bg-white/5 border border-white/10 \${className}\`} />; }
+    function GlassCard({ className="" }){ return <div className={`rounded-3xl bg-white/5 border border-white/10 ${className}`} />; }
 
     function VinylDisc({ spinning }){
       return (
         <div className="relative w-28 h-28">
           <div className="absolute inset-0 rounded-2xl bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.08),transparent)] border border-white/10" />
-          <div className={\`absolute right-[-14px] top-1/2 -translate-y-1/2 w-24 h-24 rounded-full grid place-items-center \${spinning ? "animate-spin" : ""}\`} style={{ animationDuration:"6s", background:"radial-gradient(circle, #0c0c0f 25%, #15151a 26%, #0c0c0f 40%, #15151a 60%, #0c0c0f 75%)" }}>
+          <div className={`absolute right-[-14px] top-1/2 -translate-y-1/2 w-24 h-24 rounded-full grid place-items-center ${spinning ? "animate-spin" : ""}`} style={{ animationDuration:"6s", background:"radial-gradient(circle, #0c0c0f 25%, #15151a 26%, #0c0c0f 40%, #15151a 60%, #0c0c0f 75%)" }}>
             <div className="w-3 h-3 rounded-full bg-white/80" />
           </div>
         </div>
@@ -262,7 +261,7 @@
           </div>
           <div className="max-h-40 overflow-auto flex flex-col gap-1">
             {playlist.map(track=>(
-              <div key={track.id} className={\`group flex items-center gap-2 text-sm bg-white/5 border border-white/10 rounded p-2 \${ currentId===track.id ? "ring-1 ring-[var(--accent)]/70" : "" }\`}>
+              <div key={track.id} className={`group flex items-center gap-2 text-sm bg-white/5 border border-white/10 rounded p-2 ${ currentId===track.id ? "ring-1 ring-[var(--accent)]/70" : "" }`}>
                 <button onClick={()=>setCurrentId(track.id)} className="text-xs px-2 py-1 rounded bg-white/10 hover:bg-white/15">播放</button>
                 <div className="flex-1 truncate">{track.title || "未命名曲目"}</div>
                 <button onClick={()=>setPlaylist(playlist.filter(x=>x.id!==track.id))} className="opacity-60 hover:opacity-100 text-xs">删除</button>
@@ -281,13 +280,8 @@
         const newMsgs = [...messages, userMsg(text)]; setMessages(newMsgs); setInput("");
         if(!aiMode) return;
         if(settings.apiKey && settings.model){
-          try{
-            const reply = await callLLM(settings, newMsgs);
-            setMessages(msgs=>[...msgs, botMsg(reply)]);
-          }catch(e){
-            console.error(e);
-            setMessages(msgs=>[...msgs, botMsg("API 调用失败或被 CORS 拒绝, 已自动切换本地回复。"), botMsg(localBrain(text))]);
-          }
+          try{ const reply = await callLLM(settings, newMsgs); setMessages(msgs=>[...msgs, botMsg(reply)]); }
+          catch(e){ console.error(e); setMessages(msgs=>[...msgs, botMsg("API 调用失败或被 CORS 拒绝, 已自动切换本地回复。"), botMsg(localBrain(text))]); }
           return;
         }
         setMessages(msgs=>[...msgs, botMsg(localBrain(text))]);
@@ -300,7 +294,7 @@
           </div>
           <div ref={listRef} className="h-96 overflow-auto flex flex-col gap-2 pr-1">
             {messages.map(m=>(
-              <div key={m.id} className={\`max-w-[86%] md:max-w-[70%] rounded-2xl px-3 py-2 text-sm leading-relaxed shadow border \${ m.role==='user' ? 'self-end bg-[var(--accent)]/90 text-white border-[var(--accent)]/60' : 'self-start bg-white/5 text-white/90 border-white/10' }\`}>{m.text}</div>
+              <div key={m.id} className={`max-w-[86%] md:max-w-[70%] rounded-2xl px-3 py-2 text-sm leading-relaxed shadow border ${ m.role==='user' ? 'self-end bg-[var(--accent)]/90 text-white border-[var(--accent)]/60' : 'self-start bg-white/5 text-white/90 border-white/10' }`}>{m.text}</div>
             ))}
           </div>
           <div className="flex items-center gap-2">
@@ -323,11 +317,7 @@
       if(settings.systemPrompt) m.push({ role:"system", content: settings.systemPrompt });
       for(const it of msgs){ m.push({ role: it.role === "assistant" ? "assistant" : "user", content: it.text }); }
       const url = (settings.apiBase || "https://api.openai.com").replace(/\/$/, "") + "/v1/chat/completions";
-      const res = await fetch(url, {
-        method:"POST",
-        headers:{ "Content-Type":"application/json", Authorization: "Bearer " + settings.apiKey },
-        body: JSON.stringify({ model: settings.model, messages: m, temperature: settings.temperature ?? 0.6, stream:false })
-      });
+      const res = await fetch(url, { method:"POST", headers:{ "Content-Type":"application/json", Authorization: "Bearer " + settings.apiKey }, body: JSON.stringify({ model: settings.model, messages: m, temperature: settings.temperature ?? 0.6, stream:false }) });
       if(!res.ok){ throw new Error("HTTP " + res.status + ": " + await res.text()); }
       const json = await res.json();
       const content = json && json.choices && json.choices[0] && json.choices[0].message && json.choices[0].message.content;
@@ -343,12 +333,7 @@
     function fmtTime(d){ const hh=String(d.getHours()).padStart(2,'0'); const mm=String(d.getMinutes()).padStart(2,'0'); return hh + ':' + mm; }
     function localBrain(input){ const s=(input||'').toLowerCase(); if(s.includes("音乐")||s.includes("歌")) return "点开播放器, 先把第一首放起来。边听边说。"; if(s.includes("抱")||s.includes("累")||s.includes("难过")) return "过来, 抱一下。别逞强, 先喝口水。"; if(s.includes("老公")) return "我在。别乱想。今天想听什么风格?"; if(s.length<12) return "具体一点, 说说发生了什么。"; return "听到了, 给我 30 秒拼好思路再回你。"; }
 
-    // smoke tests
-    try{
-      console.assert(typeof uid()==='string' && uid().length>=3, 'uid string');
-      console.assert(localBrain('音乐推荐').length>0, 'brain ok');
-      console.log('[MiniPhone goth UMD] ready');
-    }catch(e){ console.error(e); }
+    ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
   </script>
 </body>
 </html>

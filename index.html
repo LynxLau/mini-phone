@@ -151,28 +151,49 @@
       )
     }
 
-    function DeviceFrame({children}){
-      return (
-        <div className="relative w-[392px] md:w-[420px]">
-          <div className="relative p-2 rounded-[44px] bg-gradient-to-b from-white/10 to-white/5 border border-white/10 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
-            <div className="absolute -left-1 top-24 h-16 w-[3px] rounded-full bg-white/15"></div>
-            <div className="absolute -left-1 top-44 h-10 w-[3px] rounded-full bg-white/15"></div>
-            <div className="absolute -right-1 top-36 h-24 w-[3px] rounded-full bg-white/15"></div>
-            <div className="relative rounded-[36px] overflow-hidden ring-1 ring-white/10 bg-black/80 h-[780px] md:h-[844px]">
-              <div className="pointer-events-none absolute inset-0" style="background-image:radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px);background-size:3px 3px;opacity:.35"></div>
-              <div className="pointer-events-none absolute inset-0" style="background:radial-gradient(120% 120% at 50% 10%, transparent 30%, rgba(0,0,0,0.55) 85%)"></div>
-              <div className="absolute left-1/2 -translate-x-1/2 top-0 h-7 w-40 bg-black rounded-b-2xl shadow-[0_6px_12px_rgba(0,0,0,0.6)]"></div>
-              <div className="absolute left-[calc(50%-56px)] top-2 w-2.5 h-2.5 rounded-full bg-zinc-700"></div>
-              <div className="absolute left-1/2 -translate-x-1/2 top-2 w-16 h-1.5 rounded bg-zinc-700"></div>
+    function DeviceFrame({ children }) {
+  return (
+    <div className="relative w-[392px] md:w-[420px]">
+      <div className="relative p-2 rounded-[44px] bg-gradient-to-b from-white/10 to-white/5 border border-white/10 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
+        <div className="absolute -left-1 top-24 h-16 w-[3px] rounded-full bg-white/15" />
+        <div className="absolute -left-1 top-44 h-10 w-[3px] rounded-full bg-white/15" />
+        <div className="absolute -right-1 top-36 h-24 w-[3px] rounded-full bg-white/15" />
 
-              {children}
+        {/* 手机屏幕：固定高度，内部覆盖层全屏 */}
+        <div className="relative rounded-[36px] overflow-hidden ring-1 ring-white/10 bg-black/80 h-[780px] md:h-[844px]">
 
-              <div className="absolute left-1/2 -translate-x-1/2 bottom-2 w-24 h-1.5 rounded-full bg-white/40"></div>
-            </div>
-          </div>
+          {/* 网点纹理（修好：style 用对象，而不是字符串） */}
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              backgroundImage: 'radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px)',
+              backgroundSize: '3px 3px',
+              opacity: 0.35
+            }}
+          />
+          {/* 顶部暗角 */}
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              background: 'radial-gradient(120% 120% at 50% 10%, transparent 30%, rgba(0,0,0,0.55) 85%)'
+            }}
+          />
+
+          {/* 刘海 + 听筒 */}
+          <div className="absolute left-1/2 -translate-x-1/2 top-0 h-7 w-40 bg-black rounded-b-2xl shadow-[0_6px_12px_rgba(0,0,0,0.6)]" />
+          <div className="absolute left-[calc(50%-56px)] top-2 w-2.5 h-2.5 rounded-full bg-zinc-700" />
+          <div className="absolute left-1/2 -translate-x-1/2 top-2 w-16 h-1.5 rounded bg-zinc-700" />
+
+          {children}
+
+          {/* Home 指示条 */}
+          <div className="absolute left-1/2 -translate-x-1/2 bottom-2 w-24 h-1.5 rounded-full bg-white/40" />
         </div>
-      )
-    }
+      </div>
+    </div>
+  );
+}
+
 
     function ScreenChrome({apiOn}){
       const [clock,setClock]=useState(()=>fmtTime(new Date()));

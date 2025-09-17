@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
   <title>Mini Phone</title>
 
-  <!-- deps -->
+  <!-- 依赖 -->
   <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
@@ -13,37 +13,36 @@
 
   <style>
     :root { --accent:#8e86ff; --glass:rgba(255,255,255,0.06); }
-    html,body,#root{height:100%}
-    body{margin:0;background:#000;color:#fff}
-    .vh{min-height:100dvh}
-    #errbox{position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:9999;display:none;
-      background:#b91c1c;color:#fff;border:1px solid #fecaca;border-radius:12px;padding:10px 12px;
-      font:12px/1.4 ui-sans-serif,system-ui}
-  </style>
-<style>
-  html, body {
-    margin: 0;
-    height: 100%;
-    overflow: hidden;
-    background: #000;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-  }
+    html, body { height: 100%; margin: 0; background:#000; color:#fff; overflow:hidden; }
+    /* 外层：整机始终完整居中显示，页面不滚动 */
+    .viewport {
+      height: 100vh;
+      height: 100dvh;                 /* iOS 更稳 */
+      display: grid;
+      place-items: center;
+    }
+    /* 手机外框：按比例铺满高度，宽度随比例自动变化，不再二次缩放 */
+    #phone-frame {
+      height: 100%;
+      aspect-ratio: 420 / 844;        /* 机身宽高比 */
+      max-width: 100vw;
+      position: relative;
+    }
 
-  /* 让小手机始终贴满高度，宽度自动等比 */
-  #phone-frame {
-    height: 100%;
-    aspect-ratio: 420 / 844; /* 你的手机原始宽高比例 */
-    max-width: 100%;
-    overflow: hidden;
-  }
-</style>
+    /* 错误提示小红条，防止“黑屏无提示” */
+    #errbox{
+      position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:9999;display:none;
+      background:#b91c1c;color:#fff;border:1px solid #fecaca;border-radius:12px;padding:10px 12px;
+      font:12px/1.4 ui-sans-serif,system-ui
+    }
+  </style>
 </head>
 <body>
-  <div id="phone-frame">
-  <div id="root"></div>
-</div>
+  <div class="viewport">
+    <div id="phone-frame">
+      <div id="root" class="w-full h-full"></div>
+    </div>
+  </div>
   <div id="errbox"></div>
 
   <script>
@@ -58,65 +57,33 @@
     window.addEventListener('unhandledrejection', e=>showError((e.reason&&e.reason.message)||e.reason));
   </script>
 
+  <!-- 你的应用（React + Tailwind，已修好所有 style 对象语法） -->
   <script type="text/babel">
     const {useEffect,useMemo,useRef,useState} = React;
 
-    // storage hook
+    /* storage hook */
     function useLocalStorage(key, initial){
       const [state,setState] = React.useState(()=>{ try{ const raw=localStorage.getItem(key); return raw?JSON.parse(raw):initial }catch{ return initial }});
       React.useEffect(()=>{ try{ localStorage.setItem(key, JSON.stringify(state)) }catch{} },[key,state]);
       return [state,setState];
     }
 
-    // tiny utils
+    /* utils */
     const uid = ()=>Math.random().toString(36).slice(2,9);
     const userMsg = (t)=>({id:uid(),role:'user',text:t});
     const botMsg  = (t)=>({id:uid(),role:'assistant',text:t});
     const fmtTime = (d)=>String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
     const fileToDataURL = (file)=>new Promise((res,rej)=>{ if(!file) return res(''); const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(file); });
 
-    // only applies to phone screen (inner)
+    /* 只作用于“手机屏幕内部”的背景 */
     function phoneBgStyle(theme){
       if(theme.bgType==='color') return {background:theme.bgColor, filter:'none'};
       return {backgroundImage:`url(${theme.bgImage})`, backgroundSize:'cover', backgroundPosition:'center center', filter:'grayscale(1)'};
     }
 
-    // fit-to-screen scaler to avoid vertical scroll inside the phone
-    function FitToScreen({children}){
-      const outerRef=useRef(null), innerRef=useRef(null);
-      const [scale,setScale]=useState(1);
-      useEffect(()=>{
-        function recalc(){
-          const o=outerRef.current, i=innerRef.current;
-          if(!o||!i) return;
-          const s=Math.min(1, o.clientHeight / Math.max(i.scrollHeight,1));
-          setScale(s>0?s:1);
-        }
-        recalc();
-        let ro;
-        if(window.ResizeObserver){
-          ro=new ResizeObserver(recalc);
-          ro.observe(outerRef.current); ro.observe(innerRef.current);
-        }
-        window.addEventListener('resize', recalc);
-        window.addEventListener('orientationchange', recalc);
-        return ()=>{ ro&&ro.disconnect(); window.removeEventListener('resize',recalc); window.removeEventListener('orientationchange',recalc); }
-      },[]);
-      return (
-        <div ref={outerRef} className="relative h-full overflow-hidden">
-          <div className="flex justify-center">
-            <div ref={innerRef} style={{transform:`scale(${scale})`, transformOrigin:'top center', width:'100%'}}>
-              {children}
-            </div>
-          </div>
-        </div>
-      )
-    }
-
     function App(){ return <MiniPhone/> }
 
     function MiniPhone(){
-      // theme with singlePage
       const [theme,setTheme] = useLocalStorage('mp_theme', {
         accent:'#8e86ff',
         bgType:'image',
@@ -124,8 +91,7 @@
         bgImage:'',
         blur:8,
         glass:true,
-        font:'Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto',
-        singlePage:true
+        font:'Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto'
       });
 
       const [playlist,setPlaylist] = useLocalStorage('mp_playlist', [{title:'Sleepy Cat',url:'',id:uid()}]);
@@ -140,59 +106,61 @@
       const [input,setInput] = useState('');
       const [view,setView] = useState('home'); // home|chat|player|settings
 
-      // css vars
+      /* CSS 变量 */
       useEffect(()=>{ const r=document.documentElement.style; r.setProperty('--accent', theme.accent); r.setProperty('--glass', theme.glass?'rgba(255,255,255,0.06)':'rgba(255,255,255,0)') },[theme]);
       useEffect(()=>{ if(!currentId && playlist[0]) setCurrentId(playlist[0].id) },[currentId,playlist]);
 
       const apiOn = Boolean(settings.apiKey && settings.model);
 
       return (
-        <div className="vh w-full relative" style={{fontFamily:theme.font}}>
+        <div className="w-full h-full" style={{fontFamily:theme.font}}>
           <div className="absolute inset-0" style={{backdropFilter:`blur(${theme.blur}px)`}}></div>
-          <div className="relative z-10 mx-auto p-0">
-            <div className="flex justify-center items-start vh">
-              <DeviceFrame singlePage={theme.singlePage} phoneStyle={phoneBgStyle(theme)}>
-                <ScreenChrome apiOn={apiOn}/>
-                {view==='home' && <HomeScreen
-                  playlist={playlist} setPlaylist={setPlaylist}
-                  currentId={currentId} setCurrentId={setCurrentId}
-                  onOpenPlayer={()=>setView('player')}
-                  onOpenChat={()=>setView('chat')}
-                  onOpenSettings={()=>setView('settings')}
-                />}
-                {view==='chat' && <Overlay title={settings.characterName||'聊天'} onBack={()=>setView('home')}>
-                  <ChatCard messages={messages} setMessages={setMessages} input={input} setInput={setInput}
-                           aiMode={aiMode} setAiMode={setAiMode} settings={settings}/>
-                </Overlay>}
-                {view==='player' && <Overlay title="播放器" onBack={()=>setView('home')}>
-                  <PlayerCard playlist={playlist} setPlaylist={setPlaylist} currentId={currentId} setCurrentId={setCurrentId}/>
-                </Overlay>}
-                {view==='settings' && <Overlay title="设置" onBack={()=>setView('home')}>
-                  <SettingsPanel settings={settings} setSettings={setSettings} theme={theme} setTheme={setTheme}/>
-                </Overlay>}
-              </DeviceFrame>
-            </div>
+          <div className="relative z-10 w-full h-full">
+            <DeviceFrame phoneStyle={phoneBgStyle(theme)}>
+              <ScreenChrome apiOn={apiOn}/>
+              {view==='home' && <HomeScreen
+                playlist={playlist} setPlaylist={setPlaylist}
+                currentId={currentId} setCurrentId={setCurrentId}
+                onOpenPlayer={()=>setView('player')}
+                onOpenChat={()=>setView('chat')}
+                onOpenSettings={()=>setView('settings')}
+              />}
+              {view==='chat' && <Overlay title={settings.characterName||'聊天'} onBack={()=>setView('home')}>
+                <ChatCard messages={messages} setMessages={setMessages} input={input} setInput={setInput}
+                         aiMode={aiMode} setAiMode={setAiMode} settings={settings}/>
+              </Overlay>}
+              {view==='player' && <Overlay title="播放器" onBack={()=>setView('home')}>
+                <PlayerCard playlist={playlist} setPlaylist={setPlaylist} currentId={currentId} setCurrentId={setCurrentId}/>
+              </Overlay>}
+              {view==='settings' && <Overlay title="设置" onBack={()=>setView('home')}>
+                <SettingsPanel settings={settings} setSettings={setSettings} theme={theme} setTheme={setTheme}/>
+              </Overlay>}
+            </DeviceFrame>
           </div>
         </div>
       )
     }
 
-    function DeviceFrame({children, singlePage, phoneStyle}){
+    /* 机身框：宽高跟随外层容器，不再写死像素，也不再二次 scale */
+    function DeviceFrame({children, phoneStyle}){
       return (
-        <div className="relative w-[392px] md:w-[420px]">
-          <div className="relative p-2 rounded-[44px] bg-gradient-to-b from-white/10 to-white/5 border border-white/10 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
+        <div className="relative w-full h-full">
+          <div className="relative w-full h-full p-2 rounded-[44px] bg-gradient-to-b from-white/10 to-white/5 border border-white/10 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
             <div className="absolute -left-1 top-24 h-16 w-[3px] rounded-full bg-white/15"></div>
             <div className="absolute -left-1 top-44 h-10 w-[3px] rounded-full bg-white/15"></div>
             <div className="absolute -right-1 top-36 h-24 w-[3px] rounded-full bg-white/15"></div>
 
-            <div className="relative rounded-[36px] overflow-hidden ring-1 ring-white/10 bg-black/80 h-[780px] md:h-[844px]" style={phoneStyle}>
-              {/* texture */}
+            <div className="relative w-full h-full rounded-[36px] overflow-hidden ring-1 ring-white/10 bg-black/80" style={phoneStyle}>
+              {/* 纹理与暗角（注意 style 对象语法） */}
               <div className="pointer-events-none absolute inset-0" style={{backgroundImage:'radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px)',backgroundSize:'3px 3px',opacity:.35}}></div>
               <div className="pointer-events-none absolute inset-0" style={{background:'radial-gradient(120% 120% at 50% 10%, transparent 30%, rgba(0,0,0,0.55) 85%)'}}></div>
 
-              {singlePage ? <FitToScreen>{children}</FitToScreen> : <div className="h-full overflow-auto">{children}</div>}
+              {/* 内容：内部各页自己管理滚动，整机不滚动 */}
+              <div className="absolute inset-0 overflow-hidden">
+                {children}
+              </div>
 
-              {/* notch + sensor + home bar */}
+              {/* 刘海 + 传感 + Home 条 */}
               <div className="absolute left-1/2 -translate-x-1/2 top-0 h-7 w-40 bg-black rounded-b-2xl shadow-[0_6px_12px_rgba(0,0,0,0.6)]"></div>
               <div className="absolute left-[calc(50%-56px)] top-2 w-2.5 h-2.5 rounded-full bg-zinc-700"></div>
               <div className="absolute left-1/2 -translate-x-1/2 top-2 w-16 h-1.5 rounded bg-zinc-700"></div>
@@ -214,6 +182,7 @@
       )
     }
 
+    /* 首页 */
     function HomeScreen({playlist,setPlaylist,currentId,setCurrentId,onOpenPlayer,onOpenChat,onOpenSettings}){
       const current=useMemo(()=>playlist.find(x=>x.id===currentId)||playlist[0],[playlist,currentId]);
       return (
@@ -282,7 +251,7 @@
       )
     }
 
-    // full overlay inside phone
+    /* 覆盖层页（聊天/播放器/设置） */
     function Overlay({title,children,onBack}){
       return (
         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm">
@@ -302,7 +271,7 @@
       )
     }
 
-    // player
+    /* 播放器 */
     function PlayerCard({playlist,setPlaylist,currentId,setCurrentId}){
       const current=useMemo(()=>playlist.find(x=>x.id===currentId)||playlist[0],[playlist,currentId]);
       useEffect(()=>{ if(!current && playlist.length) setCurrentId(playlist[0].id) },[current,playlist,setCurrentId]);
@@ -341,7 +310,7 @@
       )
     }
 
-    // chat
+    /* 聊天 */
     function ChatCard({messages,setMessages,input,setInput,aiMode,setAiMode,settings}){
       const listRef=useRef(null);
       useEffect(()=>{ listRef.current?.scrollTo({top:999999,behavior:'smooth'}) },[messages.length]);
@@ -386,7 +355,7 @@
     }
     const TemplateChip=({label,text,onClick})=><button onClick={()=>onClick(text)} className="px-2 py-1 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10">{label}</button>;
 
-    // settings with 4 tabs
+    /* 设置（4 个页签：API / 美化 / 字体 / 手机背景） */
     function SettingsPanel({settings,setSettings,theme,setTheme}){
       const [tab,setTab]=useState('api');
       const [temp,setTemp]=useState(()=>({apiBase:'https://api.openai.com',apiKey:'',model:'',systemPrompt:'',characterName:'Valuri',avatar:'',temperature:0.6,...settings}));
@@ -426,7 +395,6 @@
               <Row label="主题色"><input type="color" value={tTheme.accent} onChange={e=>setTTheme({...tTheme,accent:e.target.value})} className="w-8 h-8 rounded"/></Row>
               <Row label="毛玻璃"><input type="checkbox" checked={tTheme.glass} onChange={e=>setTTheme({...tTheme,glass:e.target.checked})}/></Row>
               <Row label="模糊"><input type="range" min="0" max="20" value={tTheme.blur} onChange={e=>setTTheme({...tTheme,blur:+e.target.value})}/> <span className="text-xs opacity-70 w-8 text-right">{tTheme.blur}</span></Row>
-              <Row label="单屏模式"><input type="checkbox" checked={tTheme.singlePage} onChange={e=>setTTheme({...tTheme,singlePage:e.target.checked})}/> <span className="text-xs opacity-70 ml-2">自动缩放到一屏</span></Row>
             </div>
           )}
 
@@ -460,9 +428,9 @@
                     <input type="file" accept="image/*" className="hidden" onChange={e=>fileToDataURL(e.target.files&&e.target.files[0]).then(url=>setTTheme({...tTheme,bgImage:url||''}))}/>
                   </label>
                   {tTheme.bgImage && <button onClick={()=>setTTheme({...tTheme,bgImage:''})} className="ml-2 text-xs px-2 py-1 rounded bg-white/10 border border-white/10">清除</button>}
-                </Row>
+              </Row>
               )}
-              <div className="text-xs opacity-70">提示：这个背景只作用于“手机屏幕内部”。手机壳和外层不会被替换。</div>
+              <div className="text-xs opacity-70">提示：这个背景只作用于“手机屏幕内部”。手机壳与外层网页不受影响。</div>
             </div>
           )}
 
@@ -475,6 +443,7 @@
     const Row=({label,children})=>(<div className="flex items-center gap-3"><div className="w-20 shrink-0 text-xs opacity-80">{label}</div><div className="flex-1 flex items-center flex-wrap gap-2">{children}</div></div>);
     const TabButton=({active,onClick,children})=>(<button onClick={onClick} className={`px-3 py-1.5 rounded-lg border text-xs ${active?'bg-white/15 border-white/20':'bg-white/5 border-white/10 hover:bg-white/10'}`}>{children}</button>);
 
+    /* LLM 简易调用（可换自定义 API） */
     async function callLLM(settings,msgs){
       const m=[]; if(settings.systemPrompt) m.push({role:'system',content:settings.systemPrompt});
       for(const it of msgs){ m.push({role:it.role==='assistant'?'assistant':'user',content:it.text}); }
@@ -486,7 +455,7 @@
     }
     function localBrain(s){ s=(s||'').toLowerCase(); if(s.includes('音乐')||s.includes('歌')) return '点开播放器, 先把第一首放起来。边听边说。'; if(s.includes('抱')||s.includes('累')||s.includes('难过')) return '过来, 抱一下。别逞强, 先喝口水。'; if(s.includes('老公')) return '我在。别乱想。今天想听什么风格?'; if(s.length<12) return '具体一点, 说说发生了什么。'; return '听到了, 给我 30 秒拼好思路再回你。'; }
 
-    // smoke tests
+    /* 冒烟测试，避免静悄悄报错 */
     try{
       console.assert(typeof uid()==='string' && uid().length>=3, 'uid ok');
       console.assert(localBrain('音乐推荐').length>0, 'brain ok');
@@ -495,19 +464,5 @@
 
     ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
   </script>
-<script>
-  (function () {
-    const W = 420, H = 844;              // 和上面 CSS 尺寸一致
-    const frame = document.getElementById('phone-scale');
-    function fit() {
-      // 取窗口宽/高与设计宽/高的最小比例，保证整机完整显示
-      const s = Math.min(window.innerWidth / W, window.innerHeight / H);
-      frame.style.transform = `scale(${s})`;
-    }
-    window.addEventListener('resize', fit, {passive:true});
-    window.addEventListener('orientationchange', fit, {passive:true});
-    fit();
-  })();
-</script>
 </body>
 </html>

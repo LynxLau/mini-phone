@@ -20,9 +20,36 @@
       background:#b91c1c;color:#fff;border:1px solid #fecaca;border-radius:12px;padding:10px 12px;
       font:12px/1.4 ui-sans-serif,system-ui}
   </style>
+<style>
+  html, body {
+    height: 100%;
+    margin: 0;
+    overflow: hidden;              /* 禁止网页滚动条 */
+    background: #000;
+  }
+  /* 居中容器，铺满视窗 */
+  #fit-viewport {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    pointer-events: auto;
+  }
+  /* 这个盒子就是整部“小手机”的参考尺寸 */
+  #phone-scale {
+    width: 420px;   /* 你的手机设计宽度（和 DeviceFrame 接近）*/
+    height: 844px;  /* 你的手机设计高度（和 DeviceFrame 接近）*/
+    transform-origin: center center;
+    overflow: hidden;               /* 防止内部溢出 */
+  }
+</style>
 </head>
 <body>
-  <div id="root"></div>
+  <div id="fit-viewport">
+  <div id="phone-scale">
+    <div id="root"></div>
+  </div>
+</div>
   <div id="errbox"></div>
 
   <script>
@@ -474,5 +501,19 @@
 
     ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
   </script>
+<script>
+  (function () {
+    const W = 420, H = 844;              // 和上面 CSS 尺寸一致
+    const frame = document.getElementById('phone-scale');
+    function fit() {
+      // 取窗口宽/高与设计宽/高的最小比例，保证整机完整显示
+      const s = Math.min(window.innerWidth / W, window.innerHeight / H);
+      frame.style.transform = `scale(${s})`;
+    }
+    window.addEventListener('resize', fit, {passive:true});
+    window.addEventListener('orientationchange', fit, {passive:true});
+    fit();
+  })();
+</script>
 </body>
 </html>

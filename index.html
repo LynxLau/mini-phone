@@ -38,7 +38,9 @@
     const { useEffect, useMemo, useRef, useState } = React;
 
     function useLocalStorage(key, initial){
-      const [state,setState] = React.useState(()=>{ try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : initial } catch { return initial } });
+      const [state,setState] = React.useState(()=>{
+        try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : initial } catch { return initial }
+      });
       React.useEffect(()=>{ try{ localStorage.setItem(key, JSON.stringify(state)) }catch{} }, [key,state]);
       return [state,setState];
     }
@@ -46,37 +48,31 @@
     function App(){ return <MiniPhone/>; }
 
     function MiniPhone(){
-      const SHOW_HEADER = false;
-      const [theme, setTheme] = useLocalStorage("mp_theme", { accent:"#8e86ff", bgType:"image", bgColor:"#0a0a0d", bgImage:"", blur:8, glass:true, font:"Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto" });
+      const [theme, setTheme] = useLocalStorage("mp_theme", { accent:"#8e86ff", bgType:"image", bgColor:"#0a0a0d", bgImage:"", blur:8, glass:true });
       const [playlist, setPlaylist] = useLocalStorage("mp_playlist", [{ title:"Moon River", url:"", id: uid() }]);
       const [currentId, setCurrentId] = useLocalStorage("mp_current", null);
-
-      const defaultsSettings = { apiBase:"https://api.openai.com", apiKey:"", model:"", systemPrompt:"", characterName:"Valuri", avatar:"", temperature:0.6 };
-      const [settings, setSettings] = useLocalStorage("mp_settings", defaultsSettings);
-      useEffect(()=>{ setSettings(prev => ({ ...defaultsSettings, ...prev })); }, []);
-
-      const [aiMode, setAiMode] = useLocalStorage("mp_aiMode", true);
-      const [messages, setMessages] = useLocalStorage("mp_msgs", [ botMsg("我在。把耳机戴上, 边听边说。") ]);
+      const [messages, setMessages] = useLocalStorage("mp_msgs", [botMsg("我在。把耳机戴上, 边听边说。")]);
       const [input, setInput] = useState("");
+      const [settings, setSettings] = useLocalStorage("mp_settings", { apiBase:"https://api.openai.com", apiKey:"", model:"", systemPrompt:"", characterName:"Valuri", avatar:"", temperature:0.6 });
+      const [aiMode, setAiMode] = useLocalStorage("mp_aiMode", true);
       const [view, setView] = useState("home");
 
       useEffect(()=>{ const r=document.documentElement.style; r.setProperty("--accent", theme.accent); r.setProperty("--glass", theme.glass ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.0)"); },[theme]);
       useEffect(()=>{ if(!currentId && playlist[0]) setCurrentId(playlist[0].id); }, [currentId, playlist, setCurrentId]);
-
       const apiOn = Boolean(settings.apiKey && settings.model);
 
       return (
-        <div className="min-h-screen w-full relative" style={{ ...bgStyle(theme), fontFamily: theme.font }}>
+        <div className="min-h-screen w-full relative" style={bgStyle(theme)}>
           <div className="absolute inset-0" style={{ backdropFilter: `blur(${theme.blur}px)` }} />
-          <div className=\"relative z-10 mx-auto p-0\">
-            {SHOW_HEADER && <TopBar onSettings={()=>setView("settings")} apiOn={apiOn} />} 
-            <div className=\"grid place-items-center min-h-screen\">
+          <div className="relative z-10 mx-auto max-w-5xl px-4 py-8">
+            <TopBar theme={theme} setTheme={setTheme} onSettings={()=>setView("settings")} apiOn={apiOn} />
+            <div className="mt-6 grid place-items-center">
               <DeviceFrame>
                 <ScreenChrome apiOn={apiOn} />
                 {view==="home" && <HomeScreen playlist={playlist} setPlaylist={setPlaylist} currentId={currentId} setCurrentId={setCurrentId} onOpenPlayer={()=>setView("player")} onOpenChat={()=>setView("chat")} onOpenSettings={()=>setView("settings")} />}
                 {view==="chat" && <Overlay title={settings.characterName || "聊天"} onBack={()=>setView("home")}><ChatCard messages={messages} setMessages={setMessages} input={input} setInput={setInput} aiMode={aiMode} setAiMode={setAiMode} settings={settings} /></Overlay>}
                 {view==="player" && <Overlay title="播放器" onBack={()=>setView("home")}><PlayerCard playlist={playlist} setPlaylist={setPlaylist} currentId={currentId} setCurrentId={setCurrentId} /></Overlay>}
-                {view==="settings" && <Overlay title="设置" onBack={()=>setView("home")}><SettingsPanel settings={settings} setSettings={setSettings} theme={theme} setTheme={setTheme} /></Overlay>}
+                {view==="settings" && <Overlay title="设置" onBack={()=>setView("home")}><SettingsPanel settings={settings} setSettings={setSettings} /></Overlay>}
               </DeviceFrame>
             </div>
           </div>
@@ -84,17 +80,33 @@
       );
     }
 
-    function TopBar({ onSettings, apiOn }){
+    function TopBar({ theme, setTheme, onSettings, apiOn }){
       return (
         <div className="rounded-2xl p-4 shadow-xl border border-white/10" style={{ background:"var(--glass)" }}>
           <div className="flex flex-wrap items-center gap-3 justify-between">
             <div className="flex items-center gap-3">
               <span className="text-sm px-2 py-1 rounded-full border border-white/10 bg-white/5">Mini Phone</span>
               <span className="text-xs opacity-70">Chat + Music</span>
+              <span className={`text-[11px] px-2 py-0.5 rounded-full ${apiOn ? "bg-green-500/20 text-green-300" : "bg-white/10 text-white/70"}`}>{apiOn ? "API ON" : "API OFF"}</span>
             </div>
             <div className="flex items-center gap-3">
-              <span className={`text-[11px] px-2 py-0.5 rounded-full ${apiOn ? "bg-green-500/20 text-green-300" : "bg-white/10 text-white/70"}`}>{apiOn ? "API ON" : "API OFF"}</span>
               <button onClick={onSettings} className="text-xs px-2 py-1 rounded bg-white/10 border border-white/10 hover:bg-white/15">设置</button>
+              <label className="text-xs opacity-80">主题色</label>
+              <input type="color" value={theme.accent} onChange={e=>setTheme({ ...theme, accent:e.target.value })} className="w-8 h-8 rounded" />
+              <select value={theme.bgType} onChange={e=>setTheme({ ...theme, bgType:e.target.value })} className="text-xs bg-white/10 px-2 py-1 rounded border border-white/10">
+                <option value="color">纯色背景</option>
+                <option value="image">图片背景</option>
+              </select>
+              {theme.bgType==="color" ? (
+                <input type="color" value={theme.bgColor} onChange={e=>setTheme({ ...theme, bgColor:e.target.value })} className="w-8 h-8 rounded" />
+              ) : (
+                <label className="text-xs bg-white/10 px-2 py-1 rounded border border-white/10 cursor-pointer">上传图片
+                  <input type="file" accept="image/*" className="hidden" onChange={e=>fileToDataURL(e.target.files && e.target.files[0]).then(url=>setTheme({ ...theme, bgImage:url }))} />
+                </label>
+              )}
+              <label className="text-xs opacity-80">模糊</label>
+              <input type="range" min={0} max={20} value={theme.blur} onChange={e=>setTheme({ ...theme, blur:+e.target.value })} />
+              <label className="text-xs opacity-80 flex items-center gap-1"><input type="checkbox" checked={theme.glass} onChange={e=>setTheme({ ...theme, glass:e.target.checked })} /> 玻璃</label>
             </div>
           </div>
         </div>
@@ -223,7 +235,7 @@
 
     function PlayerCard({ playlist, setPlaylist, currentId, setCurrentId }){
       const current = useMemo(()=>playlist.find(x=>x.id===currentId) || playlist[0], [playlist,currentId]);
-      useEffect(()=>{ if(!current && playlist.length) setCurrentId(playlist[0].id); }, [current, playlist, setCurrentId]);
+      useEffect(()=>{ if(!current && playlist.length) setCurrentId(playlist[0].id); }, [current,playlist,setCurrentId]);
       return (
         <div className="flex flex-col gap-3">
           <div className="text-sm font-medium">播放器</div>
@@ -300,87 +312,9 @@
 
     function TemplateChip({ label, text, onClick }){ return <button onClick={()=>onClick(text)} className="px-2 py-1 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10">{label}</button>; }
 
-    function SettingsPanel({ settings, setSettings, theme, setTheme }){
-      const [tab, setTab] = useState("beauty");
-      const [temp, setTemp] = useState(()=>({ apiBase:"https://api.openai.com", apiKey:"", model:"", systemPrompt:"", characterName:"Valuri", avatar:"", temperature:0.6, ...settings }));
-      const [tTheme, setTTheme] = useState(theme);
-      const tempVal = Number.isFinite(+temp.temperature) ? +temp.temperature : 0.6;
-      function saveAll(){ setSettings({ ...temp, temperature: tempVal }); setTheme(tTheme); }
-      return (
-        <div className="grid grid-cols-1 gap-3 text-sm">
-          <div className="flex gap-1">
-            <TabButton active={tab==="beauty"} onClick={()=>setTab("beauty")}>美化</TabButton>
-            <TabButton active={tab==="font"} onClick={()=>setTab("font")}>字体</TabButton>
-            <TabButton active={tab==="background"} onClick={()=>setTab("background")}>手机背景</TabButton>
-          </div>
-          {tab==="beauty" && (
-            <div className="rounded-xl border border-white/10 p-3 bg-white/5 space-y-3">
-              <Row label="主题色"><input type="color" value={tTheme.accent} onChange={e=>setTTheme({ ...tTheme, accent:e.target.value })} className="w-8 h-8 rounded" /></Row>
-              <Row label="毛玻璃"><input type="checkbox" checked={tTheme.glass} onChange={e=>setTTheme({ ...tTheme, glass:e.target.checked })} /></Row>
-              <Row label="模糊"><input type="range" min={0} max={20} value={tTheme.blur} onChange={e=>setTTheme({ ...tTheme, blur:+e.target.value })} /> <span className="text-xs opacity-70 w-8 text-right">{tTheme.blur}</span></Row>
-            </div>
-          )}
-          {tab==="font" && (
-            <div className="rounded-xl border border-white/10 p-3 bg-white/5 space-y-3">
-              <Row label="字体栈"><input value={tTheme.font} onChange={e=>setTTheme({ ...tTheme, font:e.target.value })} placeholder="Inter, system-ui, ..." className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10 focus:outline-none" /></Row>
-              <div className="flex flex-wrap gap-2 text-xs">
-                {[
-                  "Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto",
-                  "Noto Serif SC, ui-serif, Georgia, serif",
-                  "LXGW WenKai, system-ui, sans-serif",
-                ].map(f => (<button key={f} onClick={()=>setTTheme({ ...tTheme, font:f })} className="px-2 py-1 rounded bg-white/10 border border-white/10 hover:bg-white/15">{f.split(",")[0]}</button>))}
-              </div>
-              <div className="text-xs opacity-80">预览：<span style={{ fontFamily: tTheme.font }} className="ml-1">春风十里，不如你。</span></div>
-            </div>
-          )}
-          {tab==="background" && (
-            <div className="rounded-xl border border-white/10 p-3 bg-white/5 space-y-3">
-              <Row label="类型">
-                <select value={tTheme.bgType} onChange={e=>setTTheme({ ...tTheme, bgType:e.target.value })} className="text-xs bg-white/10 px-2 py-1 rounded border border-white/10">
-                  <option value="color">纯色背景</option>
-                  <option value="image">图片背景</option>
-                </select>
-              </Row>
-              {tTheme.bgType==="color" ? (
-                <Row label="颜色"><input type="color" value={tTheme.bgColor} onChange={e=>setTTheme({ ...tTheme, bgColor:e.target.value })} className="w-8 h-8 rounded" /></Row>
-              ) : (
-                <Row label="图片">
-                  <label className="text-xs bg-white/10 px-2 py-1 rounded border border-white/10 cursor-pointer">上传图片
-                    <input type="file" accept="image/*" className="hidden" onChange={e=>fileToDataURL(e.target.files && e.target.files[0]).then(url=>setTTheme({ ...tTheme, bgImage:url || "" }))} />
-                  </label>
-                  {tTheme.bgImage && <button onClick={()=>setTTheme({ ...tTheme, bgImage:"" })} className="ml-2 text-xs px-2 py-1 rounded bg-white/10 border border-white/10">清除</button>}
-                </Row>
-              )}
-            </div>
-          )}
-
-          <div className="h-px bg-white/10 my-1" />
-
-          <div className="rounded-xl border border-white/10 p-3 bg-white/5 space-y-3">
-            <Row label="角色名"><input value={temp.characterName} onChange={e=>setTemp({ ...temp, characterName:e.target.value })} className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10 focus:outline-none" placeholder="例如 Valuri" /></Row>
-            <Row label="头像 URL"><input value={temp.avatar} onChange={e=>setTemp({ ...temp, avatar:e.target.value })} className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10 focus:outline-none" placeholder="http(s)://..." /></Row>
-            <Row label="API Base"><input value={temp.apiBase} onChange={e=>setTemp({ ...temp, apiBase:e.target.value })} className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10 focus:outline-none" placeholder="https://api.openai.com" /></Row>
-            <Row label="API Key"><input type="password" value={temp.apiKey} onChange={e=>setTemp({ ...temp, apiKey:e.target.value })} className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10 focus:outline-none" placeholder="sk-... 存本地" /></Row>
-            <Row label="Model"><input value={temp.model} onChange={e=>setTemp({ ...temp, model:e.target.value })} className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10 focus:outline-none" placeholder="gpt-4o-mini 或其他" /></Row>
-            <div className="flex items-center gap-3">
-              <label className="text-xs opacity-80">Temperature</label>
-              <input type="range" min={0} max={2} step={0.1} value={Number.isFinite(+temp.temperature) ? +temp.temperature : 0.6} onChange={e=>setTemp({ ...temp, temperature:+e.target.value })} />
-              <span className="text-xs opacity-70 w-10">{(Number.isFinite(+temp.temperature) ? +temp.temperature : 0.6).toFixed(1)}</span>
-            </div>
-            <label className="text-xs opacity-80">System Prompt</label>
-            <textarea value={temp.systemPrompt} onChange={e=>setTemp({ ...temp, systemPrompt:e.target.value })} className="bg-white/10 rounded-lg px-3 py-2 border border-white/10 focus:outline-none min-h-[88px]" />
-            <div className="mt-1 flex items-center justify-end gap-2"><button onClick={()=>{ setSettings({ ...temp, temperature: Number.isFinite(+temp.temperature) ? +temp.temperature : 0.6 }); setTheme(tTheme); }} className="text-xs px-3 py-1 rounded bg-[var(--accent)] text-white">保存</button></div>
-            <p className="mt-1 text-[11px] opacity-70 leading-relaxed">提示: API Key 保存在当前浏览器的 localStorage 中。公开分享网页时, 朋友需要在设置里自填自己的 Key。部分服务可能禁止浏览器直连, 出现 CORS 错误时需更换兼容提供商或自建代理。</p>
-          </div>
-        </div>
-      );
-    }
-
-    function Row({ label, children }){ return (<div className="flex items-center gap-3"><div className="w-20 shrink-0 text-xs opacity-80">{label}</div><div className="flex-1 flex items-center flex-wrap gap-2">{children}</div></div>); }
-    function TabButton({ active, onClick, children }){ return (<button onClick={onClick} className={`px-3 py-1.5 rounded-lg border text-xs ${active ? "bg-white/15 border-white/20" : "bg-white/5 border-white/10 hover:bg-white/10"}`}>{children}</button>); }
-
     async function callLLM(settings, msgs){
-      const m = []; if(settings.systemPrompt) m.push({ role:"system", content: settings.systemPrompt });
+      const m = [];
+      if(settings.systemPrompt) m.push({ role:"system", content: settings.systemPrompt });
       for(const it of msgs){ m.push({ role: it.role === "assistant" ? "assistant" : "user", content: it.text }); }
       const url = (settings.apiBase || "https://api.openai.com").replace(/\/$/, "") + "/v1/chat/completions";
       const res = await fetch(url, { method:"POST", headers:{ "Content-Type":"application/json", Authorization: "Bearer " + settings.apiKey }, body: JSON.stringify({ model: settings.model, messages: m, temperature: settings.temperature ?? 0.6, stream:false }) });
@@ -390,6 +324,7 @@
       return (content || "").trim() || "(空回复)";
     }
 
+    // utils
     function uid(){ return Math.random().toString(36).slice(2,9); }
     function userMsg(text){ return { id: uid(), role: 'user', text }; }
     function botMsg(text){ return { id: uid(), role: 'assistant', text }; }
@@ -397,8 +332,6 @@
     function fileToDataURL(file){ return new Promise((res, rej)=>{ if(!file) return res(''); const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(file); }); }
     function fmtTime(d){ const hh=String(d.getHours()).padStart(2,'0'); const mm=String(d.getMinutes()).padStart(2,'0'); return hh + ':' + mm; }
     function localBrain(input){ const s=(input||'').toLowerCase(); if(s.includes("音乐")||s.includes("歌")) return "点开播放器, 先把第一首放起来。边听边说。"; if(s.includes("抱")||s.includes("累")||s.includes("难过")) return "过来, 抱一下。别逞强, 先喝口水。"; if(s.includes("老公")) return "我在。别乱想。今天想听什么风格?"; if(s.length<12) return "具体一点, 说说发生了什么。"; return "听到了, 给我 30 秒拼好思路再回你。"; }
-
-    try{ console.assert(typeof uid()==='string' && uid().length>=3, 'uid ok'); console.assert(localBrain('音乐推荐').length>0, 'brain ok'); console.log('[MiniPhone tabs CN] ready'); }catch(e){ console.error(e); }
 
     ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
   </script>

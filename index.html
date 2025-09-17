@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
   <title>Mini Phone</title>
 
-  <!-- 依赖 -->
+  <!-- deps -->
   <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
@@ -14,50 +14,34 @@
   <style>
     :root { --accent:#8e86ff; --glass:rgba(255,255,255,0.06); }
     html, body { height: 100%; margin: 0; background:#000; color:#fff; overflow:hidden; }
-    /* 外层：整机始终完整居中显示，页面不滚动 */
-    .viewport {
-      height: 100vh;
-      height: 100dvh;                 /* iOS 更稳 */
-      display: grid;
-      place-items: center;
-    }
-    /* 手机外框：按比例铺满高度，宽度随比例自动变化，不再二次缩放 */
-    #phone-frame {
-      height: 100%;
-      aspect-ratio: 420 / 844;        /* 机身宽高比 */
-      max-width: 100vw;
-      position: relative;
-    }
 
-    /* 错误提示小红条，防止“黑屏无提示” */
-    #errbox{
-      position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:9999;display:none;
+    /* 整机完整居中，网页不滚动 */
+    .viewport { height: 100vh; height: 100dvh; display:grid; place-items:center; }
+    #phone-frame { height:100%; aspect-ratio:420/844; max-width:100vw; position:relative; }
+
+    /* 错误条，防黑屏无提示 */
+    #errbox{position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:9999;display:none;
       background:#b91c1c;color:#fff;border:1px solid #fecaca;border-radius:12px;padding:10px 12px;
-      font:12px/1.4 ui-sans-serif,system-ui
-    }
+      font:12px/1.4 ui-sans-serif,system-ui}
   </style>
 </head>
 <body>
   <div class="viewport">
-    <div id="phone-frame">
-      <div id="root" class="w-full h-full"></div>
-    </div>
+    <div id="phone-frame"><div id="root" class="w-full h-full"></div></div>
   </div>
   <div id="errbox"></div>
 
   <script>
     function showError(msg){
       const box=document.getElementById('errbox');
-      box.textContent='页面报错：'+String(msg||'未知错误');
-      box.style.display='block';
-      setTimeout(()=>box.style.display='none',6000);
-      console.error('[MiniPhone]', msg);
+      box.textContent='页面报错：'+String(msg||'未知错误'); box.style.display='block';
+      setTimeout(()=>box.style.display='none',6000); console.error('[MiniPhone]', msg);
     }
     window.addEventListener('error', e=>showError(e.message));
     window.addEventListener('unhandledrejection', e=>showError((e.reason&&e.reason.message)||e.reason));
   </script>
 
-  <!-- 你的应用（React + Tailwind，已修好所有 style 对象语法） -->
+  <!-- app -->
   <script type="text/babel">
     const {useEffect,useMemo,useRef,useState} = React;
 
@@ -70,12 +54,11 @@
 
     /* utils */
     const uid = ()=>Math.random().toString(36).slice(2,9);
-    const userMsg = (t)=>({id:uid(),role:'user',text:t});
-    const botMsg  = (t)=>({id:uid(),role:'assistant',text:t});
-    const fmtTime = (d)=>String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
-    const fileToDataURL = (file)=>new Promise((res,rej)=>{ if(!file) return res(''); const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(file); });
+    const userMsg = t=>({id:uid(),role:'user',text:t});
+    const botMsg  = t=>({id:uid(),role:'assistant',text:t});
+    const fmtTime = d=>String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+    const fileToDataURL = f=>new Promise((res,rej)=>{ if(!f) return res(''); const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(f); });
 
-    /* 只作用于“手机屏幕内部”的背景 */
     function phoneBgStyle(theme){
       if(theme.bgType==='color') return {background:theme.bgColor, filter:'none'};
       return {backgroundImage:`url(${theme.bgImage})`, backgroundSize:'cover', backgroundPosition:'center center', filter:'grayscale(1)'};
@@ -85,12 +68,8 @@
 
     function MiniPhone(){
       const [theme,setTheme] = useLocalStorage('mp_theme', {
-        accent:'#8e86ff',
-        bgType:'image',
-        bgColor:'#0a0a0d',
-        bgImage:'',
-        blur:8,
-        glass:true,
+        accent:'#8e86ff', bgType:'image', bgColor:'#0a0a0d', bgImage:'',
+        blur:8, glass:true,
         font:'Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto'
       });
 
@@ -102,19 +81,23 @@
       useEffect(()=>{ setSettings(prev=>({...defaults,...prev})) },[]);
 
       const [aiMode,setAiMode] = useLocalStorage('mp_aiMode', true);
-      const [messages,setMessages] = useLocalStorage('mp_msgs', [botMsg('我在。把耳机戴上, 边听边说。')]);
-      const [input,setInput] = useState('');
       const [view,setView] = useState('home'); // home|chat|player|settings
 
-      /* CSS 变量 */
-      useEffect(()=>{ const r=document.documentElement.style; r.setProperty('--accent', theme.accent); r.setProperty('--glass', theme.glass?'rgba(255,255,255,0.06)':'rgba(255,255,255,0)') },[theme]);
+      /* 新增：消息列表/房间视图状态与数据 */
+      const [chats, setChats] = useLocalStorage('mp_chats', []); // [{id,name,msgs:[...]}]
+      const [chatView, setChatView] = useState({ mode: 'list', id: null }); // list|room
+
+      useEffect(()=>{ const r=document.documentElement.style;
+        r.setProperty('--accent', theme.accent);
+        r.setProperty('--glass', theme.glass?'rgba(255,255,255,0.06)':'rgba(255,255,255,0)'); },[theme]);
+
       useEffect(()=>{ if(!currentId && playlist[0]) setCurrentId(playlist[0].id) },[currentId,playlist]);
 
       const apiOn = Boolean(settings.apiKey && settings.model);
 
       return (
         <div className="w-full h-full" style={{fontFamily:theme.font}}>
-          <div className="absolute inset-0" style={{backdropFilter:`blur(${theme.blur}px)`}}></div>
+          <div className="absolute inset-0" style={{backdropFilter:`blur(${theme.blur}px)`}}/>
           <div className="relative z-10 w-full h-full">
             <DeviceFrame phoneStyle={phoneBgStyle(theme)}>
               <ScreenChrome apiOn={apiOn}/>
@@ -122,16 +105,30 @@
                 playlist={playlist} setPlaylist={setPlaylist}
                 currentId={currentId} setCurrentId={setCurrentId}
                 onOpenPlayer={()=>setView('player')}
-                onOpenChat={()=>setView('chat')}
+                onOpenChat={()=>{ setView('chat'); setChatView({mode:'list',id:null}); }}
                 onOpenSettings={()=>setView('settings')}
               />}
-              {view==='chat' && <Overlay title={settings.characterName||'聊天'} onBack={()=>setView('home')}>
-                <ChatCard messages={messages} setMessages={setMessages} input={input} setInput={setInput}
-                         aiMode={aiMode} setAiMode={setAiMode} settings={settings}/>
-              </Overlay>}
+
+              {view==='chat' && (
+                <Overlay
+                  title={chatView.mode==='list' ? '消息' : (chats.find(c=>c.id===chatView.id)?.name||'聊天')}
+                  onBack={()=>{
+                    if(chatView.mode==='room') setChatView({mode:'list',id:null});
+                    else setView('home');
+                  }}>
+                  {chatView.mode==='list'
+                    ? <ChatHome chats={chats} setChats={setChats} onOpen={(id)=>setChatView({mode:'room',id})}/>
+                    : <ChatRoom chat={chats.find(c=>c.id===chatView.id)}
+                                setChats={setChats}
+                                onExit={()=>setChatView({mode:'list',id:null})}
+                                settings={settings}/>}
+                </Overlay>
+              )}
+
               {view==='player' && <Overlay title="播放器" onBack={()=>setView('home')}>
                 <PlayerCard playlist={playlist} setPlaylist={setPlaylist} currentId={currentId} setCurrentId={setCurrentId}/>
               </Overlay>}
+
               {view==='settings' && <Overlay title="设置" onBack={()=>setView('home')}>
                 <SettingsPanel settings={settings} setSettings={setSettings} theme={theme} setTheme={setTheme}/>
               </Overlay>}
@@ -141,7 +138,7 @@
       )
     }
 
-    /* 机身框：宽高跟随外层容器，不再写死像素，也不再二次 scale */
+    /* 机身外壳 */
     function DeviceFrame({children, phoneStyle}){
       return (
         <div className="relative w-full h-full">
@@ -151,16 +148,13 @@
             <div className="absolute -right-1 top-36 h-24 w-[3px] rounded-full bg-white/15"></div>
 
             <div className="relative w-full h-full rounded-[36px] overflow-hidden ring-1 ring-white/10 bg-black/80" style={phoneStyle}>
-              {/* 纹理与暗角（注意 style 对象语法） */}
               <div className="pointer-events-none absolute inset-0" style={{backgroundImage:'radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px)',backgroundSize:'3px 3px',opacity:.35}}></div>
               <div className="pointer-events-none absolute inset-0" style={{background:'radial-gradient(120% 120% at 50% 10%, transparent 30%, rgba(0,0,0,0.55) 85%)'}}></div>
 
-              {/* 内容：内部各页自己管理滚动，整机不滚动 */}
               <div className="absolute inset-0 overflow-hidden">
                 {children}
               </div>
 
-              {/* 刘海 + 传感 + Home 条 */}
               <div className="absolute left-1/2 -translate-x-1/2 top-0 h-7 w-40 bg-black rounded-b-2xl shadow-[0_6px_12px_rgba(0,0,0,0.6)]"></div>
               <div className="absolute left-[calc(50%-56px)] top-2 w-2.5 h-2.5 rounded-full bg-zinc-700"></div>
               <div className="absolute left-1/2 -translate-x-1/2 top-2 w-16 h-1.5 rounded bg-zinc-700"></div>
@@ -182,14 +176,14 @@
       )
     }
 
-    /* 首页 */
+    /* 首页：播放器放大+文案调整 */
     function HomeScreen({playlist,setPlaylist,currentId,setCurrentId,onOpenPlayer,onOpenChat,onOpenSettings}){
       const current=useMemo(()=>playlist.find(x=>x.id===currentId)||playlist[0],[playlist,currentId]);
       return (
         <div className="px-4 pb-6 flex flex-col gap-3">
-          <div className="rounded-3xl p-4 bg-white/5 border border-white/10 backdrop-blur shadow-xl">
-            <div className="flex items-center gap-4">
-              <VinylDisc spinning/>
+          <div className="rounded-3xl p-5 bg-white/5 border border-white/10 backdrop-blur shadow-xl">
+            <div className="flex items-center gap-5">
+              <VinylDisc spinning size="lg"/>
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-medium truncate">{current?.title||'未命名曲目'}</div>
                 <div className="text-[11px] opacity-70 truncate">anemoia / crossing you</div>
@@ -200,19 +194,22 @@
               </div>
             </div>
           </div>
+
           <div className="grid grid-cols-2 gap-3">
             <GlassCard className="h-28"/><GlassCard className="h-28"/>
           </div>
+
           <div className="grid grid-cols-3 gap-3 py-1">
             {[
               {k:'music',label:'音乐',on:onOpenPlayer,emoji:'🎵'},
               {k:'chat',label:'聊天',on:onOpenChat,emoji:'💬'},
               {k:'set',label:'设置',on:onOpenSettings,emoji:'⚙️'},
               {k:'photo',label:'相册',on:()=>{},emoji:'🖼️'},
-              {k:'note',label:'小记',on:()=>{},emoji:'📝'},
-              {k:'link',label:'链接',on:()=>{},emoji:'🔗'},
+              {k:'note',label:'日记',on:()=>{},emoji:'📓'},
+              {k:'link',label:'微博',on:()=>{},emoji:'📣'},
             ].map(it=>(<AppIcon key={it.k} label={it.label} onClick={it.on}>{it.emoji}</AppIcon>))}
           </div>
+
           <div className="mt-1 px-3 py-2 rounded-3xl bg-white/10 border border-white/10 backdrop-blur flex items-center justify-around">
             <DockIcon label="音乐" onClick={onOpenPlayer}><span className="text-xl">🎵</span></DockIcon>
             <DockIcon label="聊天" onClick={onOpenChat}><span className="text-xl">💬</span></DockIcon>
@@ -222,16 +219,22 @@
       )
     }
     const GlassCard=({className=''})=><div className={`rounded-3xl bg-white/5 border border-white/10 ${className}`}></div>;
-    function VinylDisc({spinning}){
+
+    /* 唱片支持大号 */
+    function VinylDisc({spinning,size}) {
+      const cls = size === 'lg' ? 'w-32 h-32' : 'w-28 h-28';
+      const inner = size === 'lg' ? 'w-28 h-28' : 'w-24 h-24';
       return (
-        <div className="relative w-28 h-28">
+        <div className={`relative ${cls}`}>
           <div className="absolute inset-0 rounded-2xl bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.08),transparent)] border border-white/10"></div>
-          <div className={`absolute right-[-14px] top-1/2 -translate-y-1/2 w-24 h-24 rounded-full grid place-items-center ${spinning?'animate-spin':''}`} style={{animationDuration:'6s',background:'radial-gradient(circle,#0c0c0f 25%,#15151a 26%,#0c0c0f 40%,#15151a 60%,#0c0c0f 75%)'}}>
+          <div className={`absolute right-[-14px] top-1/2 -translate-y-1/2 ${inner} rounded-full grid place-items-center ${spinning?'animate-spin':''}`}
+               style={{animationDuration:'6s',background:'radial-gradient(circle,#0c0c0f 25%,#15151a 26%,#0c0c0f 40%,#15151a 60%,#0c0c0f 75%)'}}>
             <div className="w-3 h-3 rounded-full bg-white/80"></div>
           </div>
         </div>
-      )
+      );
     }
+
     function AppIcon({children,label,onClick}){
       return (
         <button onClick={onClick} className="group flex flex-col items-center gap-1">
@@ -251,7 +254,7 @@
       )
     }
 
-    /* 覆盖层页（聊天/播放器/设置） */
+    /* 覆盖层页 */
     function Overlay({title,children,onBack}){
       return (
         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm">
@@ -310,52 +313,99 @@
       )
     }
 
-    /* 聊天 */
-    function ChatCard({messages,setMessages,input,setInput,aiMode,setAiMode,settings}){
-      const listRef=useRef(null);
-      useEffect(()=>{ listRef.current?.scrollTo({top:999999,behavior:'smooth'}) },[messages.length]);
-      async function send(){
-        const text=input.trim(); if(!text) return;
-        const newMsgs=[...messages,userMsg(text)]; setMessages(newMsgs); setInput('');
-        if(!aiMode) return;
-        if(settings.apiKey && settings.model){
-          try{
-            const reply = await callLLM(settings,newMsgs);
-            setMessages(ms=>[...ms,botMsg(reply)]);
-          }catch(e){
-            showError('API/CORS 错误，已改用本地回复');
-            setMessages(ms=>[...ms,botMsg(localBrain(text))]);
-          }
-          return;
-        }
-        setMessages(ms=>[...ms,botMsg(localBrain(text))]);
+    /* 消息列表页 */
+    function ChatHome({chats, setChats, onOpen}) {
+      function addChat() {
+        const name = prompt('给聊天取个名字：');
+        if (!name) return;
+        const id = uid();
+        setChats([...chats, { id, name, msgs: [botMsg('新会话，开始聊天吧。')] }]);
+        onOpen(id);
       }
       return (
-        <div className="rounded-2xl p-3 border border-white/10 flex flex-col gap-3" style={{background:'var(--glass)'}}>
-          <div className="flex items-center justify-between">
-            <div className="text-sm font-medium">聊天</div>
-            <label className="text-xs opacity-80 flex items-center gap-1"><input type="checkbox" checked={aiMode} onChange={e=>setAiMode(e.target.checked)}/> AI 回复</label>
+        <div className="flex flex-col h-full">
+          <div className="flex items-center justify-end gap-2 mb-2">
+            <button onClick={addChat} className="text-xs px-2 py-1 rounded bg-white/10 border border-white/10">＋ 新建</button>
           </div>
-          <div ref={listRef} className="h-96 overflow-auto flex flex-col gap-2 pr-1">
-            {messages.map(m=>(
-              <div key={m.id} className={`max-w-[86%] md:max-w-[70%] rounded-2xl px-3 py-2 text-sm leading-relaxed shadow border ${m.role==='user'?'self-end bg-[var(--accent)]/90 text-white border-[var(--accent)]/60':'self-start bg-white/5 text-white/90 border-white/10'}`}>{m.text}</div>
-            ))}
-          </div>
-          <div className="flex items-center gap-2">
-            <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=> e.key==='Enter' && (e.shiftKey?null:send())} placeholder="说点什么…" className="flex-1 bg-white/10 rounded-xl px-3 py-2 text-sm border border-white/10 focus:outline-none"/>
-            <button onClick={send} className="px-3 py-2 rounded-xl bg-[var(--accent)] text-white text-sm hover:opacity-90">发送</button>
-          </div>
-          <div className="pt-2 border-t border-white/10 flex flex-wrap items-center gap-2 text-xs opacity-80">
-            <TemplateChip onClick={t=>setMessages(ms=>[...ms,userMsg(t),botMsg(localBrain(t))])} label="安抚" text="抱抱你, 先慢慢呼吸。"/>
-            <TemplateChip onClick={t=>setMessages(ms=>[...ms,userMsg(t),botMsg(localBrain(t))])} label="鼓励" text="你已经做得很好了, 继续。"/>
-            <TemplateChip onClick={t=>setMessages(ms=>[...ms,userMsg(t),botMsg(localBrain(t))])} label="调侃" text="今天也在乱飞的小猫?"/>
+
+          <div className="flex-1 rounded-xl border border-white/10 bg-white/5 overflow-auto" style={{WebkitOverflowScrolling:'touch'}}>
+            {chats.length === 0 ? (
+              <div className="h-full grid place-items-center text-sm opacity-70 p-6">
+                点击右上角「＋」或长按头像添加聊天
+              </div>
+            ) : (
+              <ul className="divide-y divide-white/10">
+                {chats.map(c => {
+                  const last = c.msgs?.[c.msgs.length-1]?.text || '（无消息）';
+                  return (
+                    <li key={c.id}>
+                      <button onClick={()=>onOpen(c.id)} className="w-full text-left px-3 py-3 hover:bg-white/5 flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-full bg-white/10 grid place-items-center text-xs">💬</div>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-medium truncate">{c.name}</div>
+                          <div className="text-xs opacity-70 truncate">{last}</div>
+                        </div>
+                        <div className="text-[10px] opacity-60">进入</div>
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
           </div>
         </div>
-      )
+      );
     }
-    const TemplateChip=({label,text,onClick})=><button onClick={()=>onClick(text)} className="px-2 py-1 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10">{label}</button>;
 
-    /* 设置（4 个页签：API / 美化 / 字体 / 手机背景） */
+    /* 聊天房间：消息写回对应会话 */
+    function ChatRoom({chat, setChats, onExit, settings}) {
+      const [input, setInput] = React.useState('');
+      const messages = chat?.msgs || [];
+
+      function updateMsgs(newMsgs){
+        setChats(cs => cs.map(c => c.id===chat.id ? {...c, msgs:newMsgs} : c));
+      }
+
+      async function send(){
+        const text=input.trim(); if(!text) return;
+        const newMsgs=[...messages, userMsg(text)];
+        updateMsgs(newMsgs); setInput('');
+        if (settings?.apiKey && settings?.model){
+          try{
+            const reply = await callLLM(settings, newMsgs);
+            updateMsgs([...newMsgs, botMsg(reply)]);
+          }catch{
+            updateMsgs([...newMsgs, botMsg(localBrain(text))]);
+          }
+        } else {
+          updateMsgs([...newMsgs, botMsg(localBrain(text))]);
+        }
+      }
+
+      return (
+        <div className="flex flex-col h-full">
+          <div className="flex-1 overflow-auto p-2 space-y-2" style={{WebkitOverflowScrolling:'touch'}}>
+            {messages.map(m=>(
+              <div key={m.id}
+                   className={`max-w-[86%] md:max-w-[70%] rounded-2xl px-3 py-2 text-sm leading-relaxed shadow border ${
+                     m.role==='user'
+                       ? 'self-end bg-[var(--accent)]/90 text-white border-[var(--accent)]/60 ml-auto'
+                       : 'self-start bg-white/5 text-white/90 border-white/10'
+                   }`}>
+                {m.text}
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center gap-2 p-2 border-t border-white/10">
+            <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=> e.key==='Enter' && (e.shiftKey?null:send())}
+                   placeholder="说点什么…" className="flex-1 bg-white/10 rounded-xl px-3 py-2 text-sm border border-white/10 focus:outline-none"/>
+            <button onClick={send} className="px-3 py-2 rounded-xl bg-[var(--accent)] text-white text-sm hover:opacity-90">发送</button>
+          </div>
+        </div>
+      );
+    }
+
+    /* 设置（4 tab） */
     function SettingsPanel({settings,setSettings,theme,setTheme}){
       const [tab,setTab]=useState('api');
       const [temp,setTemp]=useState(()=>({apiBase:'https://api.openai.com',apiKey:'',model:'',systemPrompt:'',characterName:'Valuri',avatar:'',temperature:0.6,...settings}));
@@ -428,9 +478,9 @@
                     <input type="file" accept="image/*" className="hidden" onChange={e=>fileToDataURL(e.target.files&&e.target.files[0]).then(url=>setTTheme({...tTheme,bgImage:url||''}))}/>
                   </label>
                   {tTheme.bgImage && <button onClick={()=>setTTheme({...tTheme,bgImage:''})} className="ml-2 text-xs px-2 py-1 rounded bg-white/10 border border-white/10">清除</button>}
-              </Row>
+                </Row>
               )}
-              <div className="text-xs opacity-70">提示：这个背景只作用于“手机屏幕内部”。手机壳与外层网页不受影响。</div>
+              <div className="text-xs opacity-70">提示：这个背景只作用于“手机屏幕内部”。</div>
             </div>
           )}
 
@@ -443,7 +493,7 @@
     const Row=({label,children})=>(<div className="flex items-center gap-3"><div className="w-20 shrink-0 text-xs opacity-80">{label}</div><div className="flex-1 flex items-center flex-wrap gap-2">{children}</div></div>);
     const TabButton=({active,onClick,children})=>(<button onClick={onClick} className={`px-3 py-1.5 rounded-lg border text-xs ${active?'bg-white/15 border-white/20':'bg-white/5 border-white/10 hover:bg-white/10'}`}>{children}</button>);
 
-    /* LLM 简易调用（可换自定义 API） */
+    /* LLM 简易调用 */
     async function callLLM(settings,msgs){
       const m=[]; if(settings.systemPrompt) m.push({role:'system',content:settings.systemPrompt});
       for(const it of msgs){ m.push({role:it.role==='assistant'?'assistant':'user',content:it.text}); }
@@ -455,7 +505,7 @@
     }
     function localBrain(s){ s=(s||'').toLowerCase(); if(s.includes('音乐')||s.includes('歌')) return '点开播放器, 先把第一首放起来。边听边说。'; if(s.includes('抱')||s.includes('累')||s.includes('难过')) return '过来, 抱一下。别逞强, 先喝口水。'; if(s.includes('老公')) return '我在。别乱想。今天想听什么风格?'; if(s.length<12) return '具体一点, 说说发生了什么。'; return '听到了, 给我 30 秒拼好思路再回你。'; }
 
-    /* 冒烟测试，避免静悄悄报错 */
+    /* 冒烟测试 */
     try{
       console.assert(typeof uid()==='string' && uid().length>=3, 'uid ok');
       console.assert(localBrain('音乐推荐').length>0, 'brain ok');

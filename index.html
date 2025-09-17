@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
   <title>Mini Phone</title>
 
-  <!-- deps -->
+  <!-- Deps -->
   <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
@@ -41,29 +41,49 @@
     window.addEventListener('unhandledrejection', e=>showError((e.reason&&e.reason.message)||e.reason));
   </script>
 
-  <!-- app -->
+  <!-- App -->
   <script type="text/babel">
     const {useEffect,useMemo,useRef,useState} = React;
 
-    /* storage hook */
+    /* ---------- storage ---------- */
     function useLocalStorage(key, initial){
       const [state,setState] = React.useState(()=>{ try{ const raw=localStorage.getItem(key); return raw?JSON.parse(raw):initial }catch{ return initial }});
       React.useEffect(()=>{ try{ localStorage.setItem(key, JSON.stringify(state)) }catch{} },[key,state]);
       return [state,setState];
     }
 
-    /* utils */
+    /* ---------- utils ---------- */
     const uid = ()=>Math.random().toString(36).slice(2,9);
     const userMsg = t=>({id:uid(),role:'user',text:t});
     const botMsg  = t=>({id:uid(),role:'assistant',text:t});
     const fmtTime = d=>String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
     const fileToDataURL = f=>new Promise((res,rej)=>{ if(!f) return res(''); const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(f); });
 
+    /* ---------- phone background inside screen ---------- */
     function phoneBgStyle(theme){
       if(theme.bgType==='color') return {background:theme.bgColor, filter:'none'};
       return {backgroundImage:`url(${theme.bgImage})`, backgroundSize:'cover', backgroundPosition:'center center', filter:'grayscale(1)'};
     }
 
+    /* ---------- Chat v2 schema ---------- */
+    const DEFAULT_CHAT_THEME = {
+      user:       { bubble:'#8e86ff', text:'#ffffff', font:'' },
+      assistant:  { bubble:'rgba(255,255,255,0.08)', text:'#eaeaea', font:'' },
+      status:     { text:'#aaaaaa', show:true },
+    };
+    const DEFAULT_CHAT_CFG = {
+      personaUser: "",
+      autoStart: { enabled:false, message:"你好，我在这儿。" },
+      statusScript: "",
+      lorebook: [],                // [{tag, content}]
+      theme: DEFAULT_CHAT_THEME
+    };
+    function upgradeChatObject(c){
+      return { id:c.id, name:c.name||'未命名', msgs:Array.isArray(c.msgs)?c.msgs:[], cfg:{ ...structuredClone(DEFAULT_CHAT_CFG), ...(c.cfg||{}) } };
+    }
+    function ensureChatsShape(list){ return (list||[]).map(upgradeChatObject); }
+
+    /* ---------- App ---------- */
     function App(){ return <MiniPhone/> }
 
     function MiniPhone(){
@@ -72,7 +92,6 @@
         blur:8, glass:true,
         font:'Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto'
       });
-
       const [playlist,setPlaylist] = useLocalStorage('mp_playlist', [{title:'Sleepy Cat',url:'',id:uid()}]);
       const [currentId,setCurrentId] = useLocalStorage('mp_current', null);
 
@@ -83,10 +102,18 @@
       const [aiMode,setAiMode] = useLocalStorage('mp_aiMode', true);
       const [view,setView] = useState('home'); // home|chat|player|settings
 
-      /* 新增：消息列表/房间视图状态与数据 */
-      const [chats, setChats] = useLocalStorage('mp_chats', []); // [{id,name,msgs:[...]}]
-      const [chatView, setChatView] = useState({ mode: 'list', id: null }); // list|room
+      /* 多会话：用升级器包一层，兼容老数据 */
+      const [chatsRaw,setChatsRaw] = useLocalStorage('mp_chats', []);
+      const chats = ensureChatsShape(chatsRaw);
+      const setChats = (updater) => {
+        setChatsRaw(prev => {
+          const next = typeof updater === 'function' ? updater(ensureChatsShape(prev)) : ensureChatsShape(updater);
+          return next;
+        });
+      };
+      const [chatView, setChatView] = useState({ mode:'list', id:null }); // list|room
 
+      /* css vars */
       useEffect(()=>{ const r=document.documentElement.style;
         r.setProperty('--accent', theme.accent);
         r.setProperty('--glass', theme.glass?'rgba(255,255,255,0.06)':'rgba(255,255,255,0)'); },[theme]);
@@ -119,9 +146,9 @@
                   {chatView.mode==='list'
                     ? <ChatHome chats={chats} setChats={setChats} onOpen={(id)=>setChatView({mode:'room',id})}/>
                     : <ChatRoom chat={chats.find(c=>c.id===chatView.id)}
+                                settings={settings}
                                 setChats={setChats}
-                                onExit={()=>setChatView({mode:'list',id:null})}
-                                settings={settings}/>}
+                                onExit={()=>setChatView({mode:'list',id:null})}/>}
                 </Overlay>
               )}
 
@@ -138,7 +165,7 @@
       )
     }
 
-    /* 机身外壳 */
+    /* ---------- Frame ---------- */
     function DeviceFrame({children, phoneStyle}){
       return (
         <div className="relative w-full h-full">
@@ -176,7 +203,7 @@
       )
     }
 
-    /* 首页：播放器放大+文案调整 */
+    /* ---------- Home ---------- */
     function HomeScreen({playlist,setPlaylist,currentId,setCurrentId,onOpenPlayer,onOpenChat,onOpenSettings}){
       const current=useMemo(()=>playlist.find(x=>x.id===currentId)||playlist[0],[playlist,currentId]);
       return (
@@ -220,7 +247,6 @@
     }
     const GlassCard=({className=''})=><div className={`rounded-3xl bg-white/5 border border-white/10 ${className}`}></div>;
 
-    /* 唱片支持大号 */
     function VinylDisc({spinning,size}) {
       const cls = size === 'lg' ? 'w-32 h-32' : 'w-28 h-28';
       const inner = size === 'lg' ? 'w-28 h-28' : 'w-24 h-24';
@@ -254,7 +280,7 @@
       )
     }
 
-    /* 覆盖层页 */
+    /* ---------- Overlay ---------- */
     function Overlay({title,children,onBack}){
       return (
         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm">
@@ -274,7 +300,7 @@
       )
     }
 
-    /* 播放器 */
+    /* ---------- Player ---------- */
     function PlayerCard({playlist,setPlaylist,currentId,setCurrentId}){
       const current=useMemo(()=>playlist.find(x=>x.id===currentId)||playlist[0],[playlist,currentId]);
       useEffect(()=>{ if(!current && playlist.length) setCurrentId(playlist[0].id) },[current,playlist,setCurrentId]);
@@ -313,25 +339,50 @@
       )
     }
 
-    /* 消息列表页 */
+    /* ---------- Chat: List ---------- */
     function ChatHome({chats, setChats, onOpen}) {
       function addChat() {
         const name = prompt('给聊天取个名字：');
         if (!name) return;
         const id = uid();
-        setChats([...chats, { id, name, msgs: [botMsg('新会话，开始聊天吧。')] }]);
-        onOpen(id);
+        const chat = { id, name, msgs:[ botMsg('新会话，开始聊天吧。') ], cfg: structuredClone(DEFAULT_CHAT_CFG) };
+        setChats([...chats, chat]); onOpen(id);
       }
+      function importJSONFile(e){
+        const file = e.target.files?.[0]; if(!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          try{
+            const data = JSON.parse(reader.result);
+            const id = uid();
+            const cfg = structuredClone(DEFAULT_CHAT_CFG);
+            if (data.persona) cfg.personaUser = String(data.persona);
+            if (Array.isArray(data.lorebook)) cfg.lorebook = data.lorebook.map(x=>({tag:String(x.tag||x.key||''), content:String(x.content||x.value||'')}));
+            if (data.theme && typeof data.theme==='object') cfg.theme = { ...DEFAULT_CHAT_THEME, ...data.theme };
+            if (data.autoStart && typeof data.autoStart==='object') cfg.autoStart = { ...cfg.autoStart, ...data.autoStart };
+            if (typeof data.statusScript === 'string') cfg.statusScript = data.statusScript;
+            const name = data.name || '新角色';
+            const chat = { id, name, msgs:[ botMsg('已导入角色卡，开始吧。') ], cfg };
+            setChats([...chats, chat]); onOpen(id);
+          }catch(err){ showError('JSON 解析失败：'+err.message); }
+        };
+        reader.readAsText(file);
+      }
+
       return (
         <div className="flex flex-col h-full">
           <div className="flex items-center justify-end gap-2 mb-2">
             <button onClick={addChat} className="text-xs px-2 py-1 rounded bg-white/10 border border-white/10">＋ 新建</button>
+            <label className="text-xs px-2 py-1 rounded bg-white/10 border border-white/10 cursor-pointer">
+              导入
+              <input type="file" accept="application/json" className="hidden" onChange={importJSONFile}/>
+            </label>
           </div>
 
           <div className="flex-1 rounded-xl border border-white/10 bg-white/5 overflow-auto" style={{WebkitOverflowScrolling:'touch'}}>
             {chats.length === 0 ? (
               <div className="h-full grid place-items-center text-sm opacity-70 p-6">
-                点击右上角「＋」或长按头像添加聊天
+                点击右上角「＋」或导入 JSON 创建会话
               </div>
             ) : (
               <ul className="divide-y divide-white/10">
@@ -357,14 +408,26 @@
       );
     }
 
-    /* 聊天房间：消息写回对应会话 */
+    /* ---------- Chat: Room ---------- */
     function ChatRoom({chat, setChats, onExit, settings}) {
       const [input, setInput] = React.useState('');
       const messages = chat?.msgs || [];
+      const theme = chat?.cfg?.theme || DEFAULT_CHAT_THEME;
+      const [open,setOpen] = React.useState(false);
 
       function updateMsgs(newMsgs){
         setChats(cs => cs.map(c => c.id===chat.id ? {...c, msgs:newMsgs} : c));
       }
+
+      useEffect(()=>{
+        if (!chat) return;
+        const cfg = chat.cfg || DEFAULT_CHAT_CFG;
+        const hasAnyUser = (chat.msgs||[]).some(x=>x.role==='user');
+        if (cfg.autoStart?.enabled && !hasAnyUser) {
+          setChats(cs=>cs.map(c=> c.id===chat.id ? {...c, msgs:[...c.msgs, botMsg(cfg.autoStart.message||'你好。')]} : c ));
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [chat?.id]);
 
       async function send(){
         const text=input.trim(); if(!text) return;
@@ -372,7 +435,8 @@
         updateMsgs(newMsgs); setInput('');
         if (settings?.apiKey && settings?.model){
           try{
-            const reply = await callLLM(settings, newMsgs);
+            const sys = buildSystemPrompt(chat);
+            const reply = await callLLM(settings, newMsgs, sys);
             updateMsgs([...newMsgs, botMsg(reply)]);
           }catch{
             updateMsgs([...newMsgs, botMsg(localBrain(text))]);
@@ -384,28 +448,170 @@
 
       return (
         <div className="flex flex-col h-full">
+          <div className="flex items-center justify-end gap-2 p-2 border-b border-white/10">
+            <button onClick={()=>setOpen(true)} className="text-xs px-2 py-1 rounded bg-white/10 border border-white/10">⚙️ 设置</button>
+          </div>
+
+          {theme.status.show && <StatusLine chat={chat} theme={theme}/>}
+
           <div className="flex-1 overflow-auto p-2 space-y-2" style={{WebkitOverflowScrolling:'touch'}}>
             {messages.map(m=>(
               <div key={m.id}
-                   className={`max-w-[86%] md:max-w-[70%] rounded-2xl px-3 py-2 text-sm leading-relaxed shadow border ${
-                     m.role==='user'
-                       ? 'self-end bg-[var(--accent)]/90 text-white border-[var(--accent)]/60 ml-auto'
-                       : 'self-start bg-white/5 text-white/90 border-white/10'
-                   }`}>
+                   className={`max-w-[86%] md:max-w-[70%] rounded-2xl px-3 py-2 text-sm leading-relaxed shadow border ${m.role==='user'?'ml-auto':''}`}
+                   style={{
+                     background: m.role==='user' ? theme.user.bubble : theme.assistant.bubble,
+                     color: m.role==='user' ? theme.user.text : theme.assistant.text,
+                     borderColor: m.role==='user' ? theme.user.bubble : 'rgba(255,255,255,0.12)',
+                     fontFamily: m.role==='user' ? theme.user.font || 'inherit' : theme.assistant.font || 'inherit'
+                   }}>
                 {m.text}
               </div>
             ))}
           </div>
+
           <div className="flex items-center gap-2 p-2 border-t border-white/10">
             <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=> e.key==='Enter' && (e.shiftKey?null:send())}
                    placeholder="说点什么…" className="flex-1 bg-white/10 rounded-xl px-3 py-2 text-sm border border-white/10 focus:outline-none"/>
             <button onClick={send} className="px-3 py-2 rounded-xl bg-[var(--accent)] text-white text-sm hover:opacity-90">发送</button>
           </div>
+
+          {open && <ChatConfigDrawer chat={chat} setChats={setChats} onClose={()=>setOpen(false)} />}
         </div>
       );
     }
 
-    /* 设置（4 tab） */
+    function StatusLine({chat,theme}){
+      let text = '';
+      try{
+        if (chat?.cfg?.statusScript) {
+          const fn = new Function('ctx', chat.cfg.statusScript);
+          text = fn({ chat });
+        }
+      }catch(e){ text = '状态脚本错误'; }
+      return <div className="text-[11px] px-2 py-1" style={{color:theme.status.text}}>{text}</div>
+    }
+
+    function buildSystemPrompt(chat){
+      const lines = [];
+      const cfg = chat?.cfg || DEFAULT_CHAT_CFG;
+      if (cfg.personaUser) lines.push(`[User Persona]\n${cfg.personaUser}`);
+      if (Array.isArray(cfg.lorebook) && cfg.lorebook.length){
+        lines.push('[Lorebook]');
+        for(const it of cfg.lorebook){ lines.push(`- ${it.tag}: ${it.content}`) }
+      }
+      return lines.join('\n\n');
+    }
+
+    function ChatConfigDrawer({chat,setChats,onClose}){
+      const [tab,setTab]=React.useState('theme'); // theme | persona | lore | script | behavior
+      const [cfg,setCfg]=React.useState(structuredClone(chat.cfg||DEFAULT_CHAT_CFG));
+
+      function save(){
+        setChats(cs=>cs.map(c => c.id===chat.id ? {...c, cfg:cfg} : c));
+        onClose();
+      }
+      function Row({label,children}){ return (
+        <div className="flex items-center gap-3">
+          <div className="w-20 shrink-0 text-xs opacity-80">{label}</div>
+          <div className="flex-1 flex items-center flex-wrap gap-2">{children}</div>
+        </div>
+      );}
+
+      return (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40">
+          <div className="absolute right-0 top-0 h-full w-[86%] max-w-[520px] bg-[#0b0b0f] border-l border-white/10 p-3 overflow-auto">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-sm opacity-90">会话设置</div>
+              <div className="flex items-center gap-2">
+                <button onClick={save} className="text-xs px-3 py-1 rounded bg-[var(--accent)]">保存</button>
+                <button onClick={onClose} className="text-xs px-3 py-1 rounded bg-white/10 border border-white/10">关闭</button>
+              </div>
+            </div>
+
+            <div className="flex gap-1 mb-3">
+              {['theme','persona','lore','script','behavior'].map(k=>(
+                <button key={k} onClick={()=>setTab(k)}
+                  className={`px-3 py-1.5 rounded-lg border text-xs ${tab===k?'bg-white/15 border-white/20':'bg-white/5 border-white/10 hover:bg-white/10'}`}>
+                  {{theme:'美化', persona:'用户人设', lore:'世界书', script:'状态脚本', behavior:'行为'}[k]}
+                </button>
+              ))}
+            </div>
+
+            {tab==='theme' && (
+              <div className="space-y-3">
+                <Row label="我方气泡">
+                  <input type="color" value={cfg.theme.user.bubble} onChange={e=>setCfg({...cfg,theme:{...cfg.theme,user:{...cfg.theme.user,bubble:e.target.value}}})}/>
+                  <input type="color" value={cfg.theme.user.text} onChange={e=>setCfg({...cfg,theme:{...cfg.theme,user:{...cfg.theme.user,text:e.target.value}}})}/>
+                  <input className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10" placeholder="字体栈（可选）" value={cfg.theme.user.font} onChange={e=>setCfg({...cfg,theme:{...cfg.theme,user:{...cfg.theme.user,font:e.target.value}}})}/>
+                </Row>
+                <Row label="对方气泡">
+                  <input type="color" value={cfg.theme.assistant.bubble} onChange={e=>setCfg({...cfg,theme:{...cfg.theme,assistant:{...cfg.theme.assistant,bubble:e.target.value}}})}/>
+                  <input type="color" value={cfg.theme.assistant.text} onChange={e=>setCfg({...cfg,theme:{...cfg.theme,assistant:{...cfg.theme.assistant,text:e.target.value}}})}/>
+                  <input className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10" placeholder="字体栈（可选）" value={cfg.theme.assistant.font} onChange={e=>setCfg({...cfg,theme:{...cfg.theme,assistant:{...cfg.theme.assistant,font:e.target.value}}})}/>
+                </Row>
+                <Row label="状态行">
+                  <input type="checkbox" checked={cfg.theme.status.show} onChange={e=>setCfg({...cfg,theme:{...cfg.theme,status:{...cfg.theme.status,show:e.target.checked}}})}/>
+                  <input type="color" value={cfg.theme.status.text} onChange={e=>setCfg({...cfg,theme:{...cfg.theme,status:{...cfg.theme.status,text:e.target.value}}})}/>
+                </Row>
+              </div>
+            )}
+
+            {tab==='persona' && (
+              <div className="space-y-3">
+                <div className="text-xs opacity-80">描述你在本会话中的人设（示例：冷静、有边界、先问再答）。</div>
+                <textarea className="w-full bg-white/10 rounded p-2 border border-white/10 min-h-[120px]" value={cfg.personaUser} onChange={e=>setCfg({...cfg,personaUser:e.target.value})}/>
+              </div>
+            )}
+
+            {tab==='lore' && (
+              <div className="space-y-3">
+                <div className="text-xs opacity-80">世界书条目</div>
+                <LoreEditor items={cfg.lorebook} onChange={items=>setCfg({...cfg,lorebook:items})}/>
+              </div>
+            )}
+
+            {tab==='script' && (
+              <div className="space-y-3">
+                <div className="text-xs opacity-80">可选脚本：返回状态行文本（运行时上下文：<code>ctx</code>）。示例：<code>return `🞄 ${'${new Date().toLocaleTimeString()}'} | ${'${ctx.chat.name}'}`</code></div>
+                <textarea className="w-full bg-white/10 rounded p-2 border border-white/10 min-h-[140px]" value={cfg.statusScript} onChange={e=>setCfg({...cfg,statusScript:e.target.value})}/>
+              </div>
+            )}
+
+            {tab==='behavior' && (
+              <div className="space-y-3">
+                <Row label="开场白">
+                  <input type="checkbox" checked={cfg.autoStart.enabled} onChange={e=>setCfg({...cfg,autoStart:{...cfg.autoStart,enabled:e.target.checked}})}/>
+                  <input className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10" value={cfg.autoStart.message} onChange={e=>setCfg({...cfg,autoStart:{...cfg.autoStart,message:e.target.value}})}/>
+                </Row>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    function LoreEditor({items,onChange}){
+      const [list,setList]=React.useState(items||[]);
+      useEffect(()=>setList(items||[]),[items]);
+      function add(){ setList([...list,{tag:'',content:''}]); }
+      function set(i,key,val){ setList(list.map((it,idx)=> idx===i? {...it,[key]:val}:it )); }
+      function del(i){ setList(list.filter((_,idx)=>idx!==i)); }
+      useEffect(()=>onChange(list),[list]);
+      return (
+        <div className="space-y-2">
+          {list.map((it,i)=>(
+            <div key={i} className="flex gap-2">
+              <input value={it.tag} onChange={e=>set(i,'tag',e.target.value)} placeholder="标签" className="w-28 bg-white/10 rounded px-2 py-1 border border-white/10"/>
+              <input value={it.content} onChange={e=>set(i,'content',e.target.value)} placeholder="内容…" className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10"/>
+              <button onClick={()=>del(i)} className="text-xs px-2 py-1 rounded bg-white/10 border border-white/10">删除</button>
+            </div>
+          ))}
+          <button onClick={add} className="text-xs px-2 py-1 rounded bg-white/10 border border-white/10">＋ 条目</button>
+        </div>
+      );
+    }
+
+    /* ---------- Settings (4 tabs) ---------- */
     function SettingsPanel({settings,setSettings,theme,setTheme}){
       const [tab,setTab]=useState('api');
       const [temp,setTemp]=useState(()=>({apiBase:'https://api.openai.com',apiKey:'',model:'',systemPrompt:'',characterName:'Valuri',avatar:'',temperature:0.6,...settings}));
@@ -493,9 +699,11 @@
     const Row=({label,children})=>(<div className="flex items-center gap-3"><div className="w-20 shrink-0 text-xs opacity-80">{label}</div><div className="flex-1 flex items-center flex-wrap gap-2">{children}</div></div>);
     const TabButton=({active,onClick,children})=>(<button onClick={onClick} className={`px-3 py-1.5 rounded-lg border text-xs ${active?'bg-white/15 border-white/20':'bg-white/5 border-white/10 hover:bg-white/10'}`}>{children}</button>);
 
-    /* LLM 简易调用 */
-    async function callLLM(settings,msgs){
-      const m=[]; if(settings.systemPrompt) m.push({role:'system',content:settings.systemPrompt});
+    /* ---------- LLM ---------- */
+    async function callLLM(settings,msgs,extraSystem){
+      const m=[];
+      if (extraSystem) m.push({role:'system',content:extraSystem});
+      if (settings.systemPrompt) m.push({role:'system',content:settings.systemPrompt});
       for(const it of msgs){ m.push({role:it.role==='assistant'?'assistant':'user',content:it.text}); }
       const url=(settings.apiBase||'https://api.openai.com').replace(/\/$/,'')+'/v1/chat/completions';
       const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+settings.apiKey},body:JSON.stringify({model:settings.model,messages:m,temperature:settings.temperature??0.6})});
@@ -505,7 +713,7 @@
     }
     function localBrain(s){ s=(s||'').toLowerCase(); if(s.includes('音乐')||s.includes('歌')) return '点开播放器, 先把第一首放起来。边听边说。'; if(s.includes('抱')||s.includes('累')||s.includes('难过')) return '过来, 抱一下。别逞强, 先喝口水。'; if(s.includes('老公')) return '我在。别乱想。今天想听什么风格?'; if(s.length<12) return '具体一点, 说说发生了什么。'; return '听到了, 给我 30 秒拼好思路再回你。'; }
 
-    /* 冒烟测试 */
+    /* ---------- Smoke tests ---------- */
     try{
       console.assert(typeof uid()==='string' && uid().length>=3, 'uid ok');
       console.assert(localBrain('音乐推荐').length>0, 'brain ok');

@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mini Phone — Chat + Music (UMD v2)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <style>
+    :root { --accent: #7c5cff; --glass: rgba(255,255,255,0.06); }
+    html, body, #root { height: 100%; }
+    .modal-mask { background: rgba(0,0,0,0.6); }
+  </style>
+</head>
+<body class="min-h-screen bg-black text-white">
+  <div id="root"></div>
+
+  <script>
+    const { useEffect, useMemo, useRef, useState } = React;
+
+    function useLocalStorage(key, initial){
+      const [state,setState] = useState(()=>{
+        try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : initial } catch { return initial }
+      });
+      useEffect(()=>{ try{ localStorage.setItem(key, JSON.stringify(state)) }catch{} }, [key,state]);
+      return [state,setState];
+    }
+
+    function App(){ return React.createElement(MiniPhone); }
+
+    function MiniPhone(){
+      const [theme, setTheme] = useLocalStorage("mp_theme", { accent:"#7c5cff", bgType:"color", bgColor:"#0b0b0f", bgImage:"", blur:8, glass:true });
+      const [playlist, setPlaylist] = useLocalStorage("mp_playlist", [{ title:"Sleepy Cat", url:"", id: uid() }]);
+      const [currentId, setCurrentId] = useLocalStorage("mp_current", null);
+      const [messages, setMessages] = useLocalStorage("mp_msgs", [botMsg("我在。把耳机戴上, 边听边说。")]);
+      const [input, setInput] = useState("");
+
+      const [settings, setSettings] = useLocalStorage("mp_settings", {
+        apiBase: "https://api.openai.com",
+        apiKey: "",
+        model: "",
+        systemPrompt: "",
+        characterName: "Mini Phone",
+        avatar: "",
+        temperature: 0.6
+      });
+      const [aiMode, setAiMode] = useLocalStorage("mp_aiMode", true);
+      const [settingsOpen, setSettingsOpen] = useState(false);
+
+      useEffect(()=>{
+        const r = document.documentElement.style;
+        r.setProperty("--accent", theme.accent);
+        r.setProperty("--glass", theme.glass ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.0)");
+      },[theme]);
+
+      useEffect(()=>{ if(!currentId && playlist[0]) setCurrentId(playlist[0].id); }, [currentId, playlist, setCurrentId]);
+
+      return React.createElement("div", { className:"min-h-screen w-full relative", style: bgStyle(theme) },
+        React.createElement("div", { className:"absolute inset-0", style:{ backdropFilter:`blur(${theme.blur}px)` }}),
+        React.createElement("div", { className:"relative z-10 mx-auto max-w-4xl px-4 py-6 flex flex-col gap-4" },
+          React.createElement(TopBar, { theme, setTheme, onOpenSettings:()=>setSettingsOpen(true) }),
+          React.createElement("div", { className:"grid grid-cols-1 md:grid-cols-3 gap-4" },
+            React.createElement(PlayerCard, { playlist, setPlaylist, currentId, setCurrentId }),
+            React.createElement("div", { className:"md:col-span-2" },
+              React.createElement(ChatCard, { messages, setMessages, input, setInput, aiMode, setAiMode, settings })
+            )
+          )
+        ),
+        settingsOpen && React.createElement(SettingsModal, { settings, setSettings, onClose:()=>setSettingsOpen(false) })
+      );
+    }
+
+    function TopBar({ theme, setTheme, onOpenSettings }){
+      return React.createElement("div", { className:"rounded-2xl p-3 md:p-4 shadow-xl border border-white/10", style:{ background:"var(--glass)" } },
+        React.createElement("div", { className:"flex items-center gap-3 justify-between" },
+          React.createElement("div", { className:"flex items-center gap-3" },
+            React.createElement("span", { className:"text-sm px-2 py-1 rounded-full border border-white/10 bg-white/5" }, "Mini Phone"),
+            React.createElement("span", { className:"text-xs opacity-70" }, "Chat + Music")
+          ),
+          React.createElement("div", { className:"flex items-center gap-3" },
+            buttonMini("设置", onOpenSettings),
+            label("主题色"),
+            inputColor(theme.accent, v=>setTheme({ ...theme, accent:v })),
+            select(["color","image"], theme.bgType, v=>setTheme({ ...theme, bgType:v })),
+            theme.bgType==="color" ? inputColor(theme.bgColor, v=>setTheme({ ...theme, bgColor:v }))
+              : uploadImage(url=>setTheme({ ...theme, bgImage:url })),
+            label("模糊"),
+            inputRange(theme.blur, v=>setTheme({ ...theme, blur:v })),
+            checkbox("玻璃", theme.glass, v=>setTheme({ ...theme, glass:v }))
+          )
+        )
+      );
+    }
+
+    function SettingsModal({ settings, setSettings, onClose }){
+      const [temp, setTemp] = useState(settings);
+      function save(){ setSettings(temp); onClose(); }
+      return React.createElement("div", { className:"fixed inset-0 z-50 flex items-center justify-center modal-mask" },
+        React.createElement("div", { className:"w-full max-w-xl rounded-2xl p-4 md:p-6 bg-zinc-900 border border-white/10 shadow-2xl" },
+          React.createElement("div", { className:"flex items-center justify-between mb-3" },
+            React.createElement("div", { className:"text-sm font-medium" }, "设置"),
+            React.createElement("button", { onClick:onClose, className:"text-xs opacity-70 hover:opacity-100" }, "关闭")
+          ),
+          React.createElement("div", { className:"grid grid-cols-1 gap-3 text-sm" },
+            textField("角色名", temp.characterName, v=>setTemp({ ...temp, characterName:v }), "例如 LynxPhone"),
+            textField("头像 URL", temp.avatar, v=>setTemp({ ...temp, avatar:v }), "http(s)://..."),
+            divLine(),
+            textField("API Base", temp.apiBase, v=>setTemp({ ...temp, apiBase:v }), "https://api.openai.com"),
+            passwordField("API Key", temp.apiKey, v=>setTemp({ ...temp, apiKey:v }), "sk-... 仅保存在本地"),
+            textField("Model", temp.model, v=>setTemp({ ...temp, model:v }), "如 gpt-4o-mini 或其他"),
+            React.createElement("label", { className:"text-xs opacity-80" }, "System Prompt"),
+            React.createElement("textarea", { value:temp.systemPrompt, onChange:e=>setTemp({ ...temp, systemPrompt:e.target.value }), className:"bg-white/10 rounded-lg px-3 py-2 border border-white/10 focus:outline-none min-h-[88px]" }),
+            React.createElement("div", { className:"flex items-center gap-3" },
+              React.createElement("label", { className:"text-xs opacity-80" }, "Temperature"),
+              React.createElement("input", { type:"range", min:0, max:2, step:0.1, value:temp.temperature, onChange:e=>setTemp({ ...temp, temperature:+e.target.value }) }),
+              React.createElement("span", { className:"text-xs opacity-70 w-10" }, temp.temperature.toFixed(1))
+            )
+          ),
+          React.createElement("div", { className:"mt-4 flex items-center justify-end gap-2" },
+            React.createElement("button", { onClick:onClose, className:"text-xs px-3 py-1 rounded bg-white/10 border border-white/10" }, "取消"),
+            React.createElement("button", { onClick:save, className:"text-xs px-3 py-1 rounded bg-[var(--accent)] text-white" }, "保存")
+          ),
+          React.createElement("p", { className:"mt-3 text-[11px] opacity-70 leading-relaxed" },
+            "提示: API Key 保存在当前浏览器的 localStorage 中。公开分享网页时, 每位访客需在设置里自填自己的 Key。部分服务提供商可能禁止浏览器直连, 出现 CORS 错误时需更换兼容提供商或自建代理。"
+          )
+        )
+      );
+    }
+
+    function PlayerCard({ playlist, setPlaylist, currentId, setCurrentId }){
+      const current = useMemo(()=>playlist.find(x=>x.id===currentId) || playlist[0], [playlist, currentId]);
+      useEffect(()=>{ if(!current && playlist.length) setCurrentId(playlist[0].id); }, [current, playlist, setCurrentId]);
+      return React.createElement("div", { className:"rounded-2xl p-4 shadow-xl border border-white/10 flex flex-col gap-3", style:{ background:"var(--glass)" } },
+        React.createElement("div", { className:"text-sm font-medium" }, "播放器"),
+        current ? React.createElement("div", { className:"flex flex-col gap-2" },
+          React.createElement("div", { className:"text-xs opacity-80 truncate" }, `当前: ${current.title || "未命名曲目"}`),
+          React.createElement("audio", { controls:true, src: current.url || undefined, className:"w-full" })
+        ) : React.createElement("div", { className:"text-xs opacity-70" }, "暂无曲目"),
+        React.createElement(PlaylistEditor, { playlist, setPlaylist, currentId, setCurrentId })
+      );
+    }
+
+    function PlaylistEditor({ playlist, setPlaylist, currentId, setCurrentId }){
+      const [title, setTitle] = useState("");
+      const [url, setUrl] = useState("");
+      return React.createElement("div", { className:"flex flex-col gap-2" },
+        React.createElement("div", { className:"flex gap-2" },
+          inputText(title, setTitle, "曲名"),
+          inputText(url, setUrl, "音频 URL"),
+          button("添加", ()=>{
+            if(!url) return;
+            const track={ title: title || (url.split("/").pop() ?? "未命名曲目"), url, id: uid() };
+            setPlaylist([...playlist, track]); setTitle(""); setUrl(""); if(!currentId) setCurrentId(track.id);
+          })
+        ),
+        React.createElement("div", { className:"max-h-40 overflow-auto flex flex-col gap-1" },
+          playlist.map(track=>React.createElement("div", { key:track.id, className:`group flex items-center gap-2 text-sm bg-white/5 border border-white/10 rounded p-2 ${ currentId===track.id ? "ring-1 ring-[var(--accent)]/70" : "" }` },
+            buttonMini("播放", ()=>setCurrentId(track.id)),
+            React.createElement("div", { className:"flex-1 truncate" }, track.title || "未命名曲目"),
+            React.createElement("button", { onClick:()=>setPlaylist(playlist.filter(x=>x.id!==track.id)), className:"opacity-60 hover:opacity-100 text-xs" }, "删除")
+          ))
+        )
+      );
+    }
+
+    function ChatCard({ messages, setMessages, input, setInput, aiMode, setAiMode, settings }){
+      const listRef = useRef(null);
+      useEffect(()=>{ listRef.current?.scrollTo({ top: 999999, behavior: "smooth" }); }, [messages.length]);
+      async function send(){
+        const text = input.trim(); if(!text) return;
+        const newMsgs = [...messages, userMsg(text)]; setMessages(newMsgs); setInput("");
+        if(!aiMode) return;
+        if(settings.apiKey && settings.model){
+          try{
+            const reply = await callLLM(settings, newMsgs);
+            setMessages(msgs=>[...msgs, botMsg(reply)]);
+          }catch(e){
+            console.error(e);
+            setMessages(msgs=>[...msgs, botMsg("API 调用失败或被 CORS 拒绝, 已自动切换本地回复。"), botMsg(localBrain(text))]);
+          }
+          return;
+        }
+        setMessages(msgs=>[...msgs, botMsg(localBrain(text))]);
+      }
+      return React.createElement("div", { className:"rounded-2xl p-4 shadow-xl border border-white/10 flex flex-col gap-3", style:{ background:"var(--glass)" } },
+        React.createElement("div", { className:"flex items-center justify-between" },
+          React.createElement("div", { className:"text-sm font-medium" }, settings.characterName || "聊天"),
+          React.createElement("div", { className:"flex items-center gap-3" },
+            React.createElement("label", { className:"text-xs opacity-80 flex items-center gap-1" },
+              React.createElement("input", { type:"checkbox", checked:aiMode, onChange:e=>setAiMode(e.target.checked) }), " AI 回复"
+            ),
+            React.createElement("span", { className:"text-[11px] opacity-60" }, (settings.apiKey && settings.model) ? "API: on" : "API: off")
+          )
+        ),
+        React.createElement("div", { ref:listRef, className:"h-96 overflow-auto flex flex-col gap-2 pr-1" },
+          messages.map(m=>React.createElement("div", { key:m.id, className:`max-w-[86%] md:max-w-[70%] rounded-2xl px-3 py-2 text-sm leading-relaxed shadow border ${ m.role==='user' ? 'self-end bg-[var(--accent)]/90 text-white border-[var(--accent)]/60' : 'self-start bg-white/5 text-white/90 border-white/10' }` }, m.text))
+        ),
+        React.createElement("div", { className:"flex items-center gap-2" },
+          inputText(input, setInput, "说点什么…", e=> e.key === 'Enter' && (e.shiftKey ? null : send())),
+          button("发送", send)
+        ),
+        React.createElement("div", { className:"pt-2 border-t border-white/10 flex flex-wrap items-center gap-2 text-xs opacity-80" },
+          chip("安抚","抱抱你, 先慢慢呼吸。", t=>setMessages(ms=>[...ms, userMsg(t), botMsg(localBrain(t))])),
+          chip("鼓励","你已经做得很好了, 继续。", t=>setMessages(ms=>[...ms, userMsg(t), botMsg(localBrain(t))])),
+          chip("调侃","今天也在乱飞的小猫?", t=>setMessages(ms=>[...ms, userMsg(t), botMsg(localBrain(t))]))
+        )
+      );
+    }
+
+    async function callLLM(settings, msgs){
+      const m = [];
+      if(settings.systemPrompt) m.push({ role:"system", content: settings.systemPrompt });
+      for(const it of msgs){ m.push({ role: it.role === "assistant" ? "assistant" : "user", content: it.text }); }
+      const url = (settings.apiBase || "https://api.openai.com").replace(/\/$/, "") + "/v1/chat/completions";
+      const res = await fetch(url, {
+        method:"POST",
+        headers:{ "Content-Type":"application/json", Authorization: "Bearer " + settings.apiKey },
+        body: JSON.stringify({ model: settings.model, messages: m, temperature: settings.temperature ?? 0.6, stream:false })
+      });
+      if(!res.ok){ throw new Error("HTTP " + res.status + ": " + await res.text()); }
+      const json = await res.json();
+      const content = json && json.choices && json.choices[0] && json.choices[0].message && json.choices[0].message.content;
+      return (content || "").trim() || "(空回复)";
+    }
+
+    // UI helpers
+    function label(txt){ return React.createElement("label", { className:"text-xs opacity-80" }, txt); }
+    function button(txt, on){ return React.createElement("button", { onClick:on, className:"px-3 py-2 rounded-xl bg-[var(--accent)] text-white text-sm hover:opacity-90" }, txt); }
+    function buttonMini(txt, on){ return React.createElement("button", { onClick:on, className:"text-xs px-2 py-1 rounded bg-white/10 border border-white/10 hover:bg-white/15" }, txt); }
+    function inputColor(val, on){ return React.createElement("input", { type:"color", value:val, onChange:e=>on(e.target.value), className:"w-8 h-8 rounded" }); }
+    function select(opts, val, on){ return React.createElement("select", { value:val, onChange:e=>on(e.target.value), className:"text-xs bg-white/10 px-2 py-1 rounded border border-white/10" }, opts.map(o=>React.createElement("option", { key:o, value:o }, o))); }
+    function uploadImage(on){ return React.createElement("label", { className:"text-xs bg-white/10 px-2 py-1 rounded border border-white/10 cursor-pointer" }, "上传图片",
+      React.createElement("input", { type:"file", accept:"image/*", className:"hidden", onChange:e=>fileToDataURL(e.target.files && e.target.files[0]).then(url=>on(url)) })
+    ); }
+    function inputRange(val, on){ return React.createElement("input", { type:"range", min:0, max:20, value:val, onChange:e=>on(+e.target.value) }); }
+    function checkbox(txt, checked, on){ return React.createElement("label", { className:"text-xs opacity-80 flex items-center gap-1" },
+      React.createElement("input", { type:"checkbox", checked, onChange:e=>on(e.target.checked) }), " " + txt
+    ); }
+    function inputText(val, on, placeholder, onKey){ return React.createElement("input", { value:val, onChange:e=>on(e.target.value), onKeyDown:onKey, placeholder, className:"flex-1 bg-white/10 rounded-xl px-3 py-2 text-sm border border-white/10 focus:outline-none" }); }
+    function chip(label, text, onClick){ return React.createElement("button", { onClick:()=>onClick(text), className:"px-2 py-1 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10" }, label); }
+    function textField(labelTxt, val, on, placeholder){ return React.createElement("div", { className:"flex flex-col gap-1" },
+      React.createElement("label", { className:"text-xs opacity-80" }, labelTxt),
+      React.createElement("input", { value:val, onChange:e=>on(e.target.value), placeholder, className:"bg-white/10 rounded-lg px-3 py-2 border border-white/10 focus:outline-none" })
+    ); }
+    function passwordField(labelTxt, val, on, placeholder){ const [show,setShow]=useState(false); return React.createElement("div", { className:"flex flex-col gap-1" },
+      React.createElement("label", { className:"text-xs opacity-80" }, labelTxt),
+      React.createElement("div", { className:"flex items-center gap-2" },
+        React.createElement("input", { type: show? "text":"password", value:val, onChange:e=>on(e.target.value), placeholder, className:"flex-1 bg-white/10 rounded-lg px-3 py-2 border border-white/10 focus:outline-none" }),
+        React.createElement("button", { onClick:()=>setShow(s=>!s), className:"text-[11px] px-2 py-1 rounded bg-white/10 border border-white/10" }, show? "隐藏":"显示")
+      )
+    ); }
+    function divLine(){ return React.createElement("div", { className:"h-px bg-white/10 my-2" }); }
+
+    // logic helpers
+    function uid(){ return Math.random().toString(36).slice(2,9); }
+    function userMsg(text){ return { id: uid(), role: 'user', text }; }
+    function botMsg(text){ return { id: uid(), role: 'assistant', text }; }
+    function bgStyle(theme){ if(theme.bgType==='color') return { background: theme.bgColor }; return { backgroundImage:'url(' + theme.bgImage + ')', backgroundSize:'cover', backgroundPosition:'center center' }; }
+    function fileToDataURL(file){ return new Promise((res, rej)=>{ if(!file) return res(''); const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(file); }); }
+    function localBrain(input){ const s=(input||'').toLowerCase(); if(s.includes("音乐")||s.includes("歌")) return "点开左侧, 先把第一首放起来。边听边说。"; if(s.includes("抱")||s.includes("累")||s.includes("难过")) return "过来, 抱一下。别逞强, 先喝口水。"; if(s.includes("老公")) return "我在。别乱想。今天想听什么风格?"; if(s.length<12) return "具体一点, 说说发生了什么。"; return "听到了, 给我 30 秒拼好思路再回你。"; }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(React.createElement(App));
+
+    try{
+      console.assert(typeof uid()==='string' && uid().length>=3, 'uid string length');
+      console.assert(localBrain('音乐推荐').includes('左侧'), 'localBrain music');
+      console.assert(localBrain('老公').includes('我在'), 'localBrain keyword');
+      console.log('[MiniPhone UMD v2] tests passed');
+    }catch(e){ console.error('[MiniPhone UMD v2] tests failed', e); }
+  </script>
+</body>
+</html>

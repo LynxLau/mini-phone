@@ -1,10 +1,8 @@
-Mini Phone — Chat + Music (UMD v2)
+Mini Phone — Goth Frame (UMD)
 
-What changed:
-- Fixed black screen when opening Settings (missing helper functions were added).
-- Still zero-build: just drag the folder to Netlify Drop.
+- Single-file deploy. No build tools.
+- Uses React UMD + Babel for JSX.
 
-Deploy:
-1) Unzip this folder.
-2) Drag the whole folder to https://app.netlify.com/drop
-3) Open the public URL.
+Deploy options:
+1) GitHub-linked site: replace index.html in your repo, commit to main.
+2) Or Netlify Deploys → Upload deploy → drag this whole folder.

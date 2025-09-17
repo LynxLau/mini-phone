@@ -46,6 +46,7 @@
     function App(){ return <MiniPhone/>; }
 
     function MiniPhone(){
+      const SHOW_HEADER = false;
       const [theme, setTheme] = useLocalStorage("mp_theme", { accent:"#8e86ff", bgType:"image", bgColor:"#0a0a0d", bgImage:"", blur:8, glass:true, font:"Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto" });
       const [playlist, setPlaylist] = useLocalStorage("mp_playlist", [{ title:"Moon River", url:"", id: uid() }]);
       const [currentId, setCurrentId] = useLocalStorage("mp_current", null);
@@ -67,9 +68,9 @@
       return (
         <div className="min-h-screen w-full relative" style={{ ...bgStyle(theme), fontFamily: theme.font }}>
           <div className="absolute inset-0" style={{ backdropFilter: `blur(${theme.blur}px)` }} />
-          <div className="relative z-10 mx-auto max-w-5xl px-4 py-8">
-            <TopBar onSettings={()=>setView("settings")} apiOn={apiOn} />
-            <div className="mt-6 grid place-items-center">
+          <div className=\"relative z-10 mx-auto p-0\">
+            {SHOW_HEADER && <TopBar onSettings={()=>setView("settings")} apiOn={apiOn} />} 
+            <div className=\"grid place-items-center min-h-screen\">
               <DeviceFrame>
                 <ScreenChrome apiOn={apiOn} />
                 {view==="home" && <HomeScreen playlist={playlist} setPlaylist={setPlaylist} currentId={currentId} setCurrentId={setCurrentId} onOpenPlayer={()=>setView("player")} onOpenChat={()=>setView("chat")} onOpenSettings={()=>setView("settings")} />}

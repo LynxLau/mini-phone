@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-  <title>Mini Phone · v2</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <title>Mini Phone · v2-fixed</title>
+  <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   <script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -18,21 +18,9 @@
     .btn:hover{ background: rgba(255,255,255,0.12); }
     .toast{position:fixed; left:50%; transform:translateX(-50%); bottom:20px; padding:8px 12px; border-radius:10px; background:#d33; color:#fff; font-size:12px; z-index:9999;}
     .bubble{word-break:break-word; white-space:pre-wrap;}
-    /* === iOS 风磨砂块 === */
-    .glass {
-      background: rgba(0,0,0,0.35);
-      border: 1px solid rgba(255,255,255,0.12);
-      box-shadow: 0 8px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08);
-      backdrop-filter: blur(16px);
-    }
-    .tile { height: 72px; width: 72px; }
-    .tile-lg { height: 128px; }
-    .dock {
-      background: rgba(0,0,0,0.40);
-      border: 1px solid rgba(255,255,255,0.10);
-      backdrop-filter: blur(16px);
-      box-shadow: 0 8px 28px rgba(0,0,0,0.35);
-    }
+    /* 玻璃风基底 */
+    .glass{ background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 8px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08); backdrop-filter: blur(16px); }
+    .dock{ background: rgba(0,0,0,0.40); border: 1px solid rgba(255,255,255,0.10); backdrop-filter: blur(16px); box-shadow: 0 8px 28px rgba(0,0,0,0.35); }
   </style>
 </head>
 <body>
@@ -41,7 +29,6 @@
   <script type="text/babel">
   const {useState,useEffect,useMemo,useRef} = React;
 
-  /* ========== utils ========== */
   const uid=()=>Math.random().toString(36).slice(2,9);
   const loadJSON=(k,f)=>{try{const r=localStorage.getItem(k);return r?JSON.parse(r):f}catch{return f}};
   const saveJSON=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}};
@@ -52,7 +39,6 @@
       accent:'#7c5cff', bgType:'image', bgColor:'#0b0b0f', bgImage:'', blur:16, glass:true,
       font:'Inter, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, Segoe UI, Roboto'
     }));
-    // API 档位
     const [apiProfiles,setApiProfiles]=useState(()=>loadJSON('mp_api_profiles',[
       {id:uid(), name:'默认', apiBase:'https://api.skyi.cc/v1', apiKey:'', model:'gemini 2.5 pro', temperature:0.6}
     ]));
@@ -62,7 +48,6 @@
     const [characters,setCharacters]=useState(()=>loadJSON('mp_chars',[]));
     const [screen,setScreen]=useState('home');
 
-    // 天气占位
     const [weather,setWeather]=useState(()=>loadJSON('mp_weather',{city:'上海', temp:'27°', icon:'☁️'}));
     useEffect(()=>saveJSON('mp_theme',theme),[theme]);
     useEffect(()=>saveJSON('mp_api_profiles',apiProfiles),[apiProfiles]);
@@ -77,7 +62,7 @@
           <div className="absolute inset-0" style={{backdropFilter:`blur(${theme.blur}px)`}}/>
           <div className="absolute left-1/2 -translate-x-1/2 top-2 w-40 h-4 rounded-full bg-black/60 border border-white/10" />
           <div className="absolute inset-0 flex flex-col">
-            {/* 顶部状态 + 档位切换（磨砂条） */}
+            {/* 顶部磨砂条 */}
             <div className="p-3">
               <div className="glass rounded-xl px-3 py-2 flex items-center justify-between">
                 <div className="text-xs text-white/80">{new Date().toTimeString().slice(0,5)}</div>
@@ -92,12 +77,11 @@
               </div>
             </div>
 
-            {/* 内容 */}
             <div className="flex-1 overflow-auto px-4 pb-4 space-y-3">
               {screen==='home' && <HomePage goto={setScreen} weather={weather} setWeather={setWeather}/>}
               {screen==='chat' && <ChatPage characters={characters} setCharacters={setCharacters} profile={profile}/>}
               {screen==='api' && <APIPage profiles={apiProfiles} setProfiles={setApiProfiles} activeId={activeProfileId} setActiveId={setActiveProfileId}/>}
-              {screen==='moments' && <MomentsPage profile={profile}/>}
+              {screen==='moments' && <MomentsPage/>}
               {screen==='xhs' && <XHSPage/>}
               {screen==='gallery' && <Placeholder title="相册"/>}
               {screen==='beauty' && <BeautyPage theme={theme} setTheme={setTheme}/>}
@@ -105,7 +89,6 @@
               {screen==='contacts' && <ContactsPage/>}
             </div>
 
-            {/* Dock */}
             <DockBar goto={setScreen}/>
           </div>
         </div>
@@ -113,10 +96,10 @@
     );
   }
 
-  /* ========== 首页（按你的图） ========== */
   function HomePage({goto,weather,setWeather}){
     const Tile = ({icon,label,onClick}) => (
-      <button onClick={onClick} className="tile glass grid place-items-center rounded-2xl text-xs text-white/90">
+      <button onClick={onClick}
+              className="glass rounded-2xl h-[72px] w-[72px] grid place-items-center text-xs text-white/90">
         <div className="text-xl">{icon}</div>
         <div className="mt-1">{label}</div>
       </button>
@@ -124,16 +107,17 @@
 
     return (
       <div className="space-y-4">
-        {/* 顶部三栏：联系人 | 播放器 | 天气 */}
+        {/* 上方三卡 */}
         <div className="grid grid-cols-[84px,1fr,112px] gap-3">
           {/* 联系人 */}
-          <button onClick={()=>goto('contacts')} className="tile-lg glass grid grid-rows-[1fr_auto] place-items-center rounded-3xl">
+          <button onClick={()=>goto('contacts')}
+                  className="glass rounded-3xl h-[128px] grid grid-rows-[1fr_auto] place-items-center">
             <div className="text-2xl">👥</div>
             <div className="text-xs opacity-90 -mt-2">联系人</div>
           </button>
 
-          {/* 大播放器卡 */}
-          <div className="tile-lg glass p-3 relative overflow-hidden rounded-3xl">
+          {/* 播放器 */}
+          <div className="glass rounded-3xl h-[128px] p-3 relative overflow-hidden">
             <div className="absolute right-3 top-3 text-[10px] opacity-70">
               {localStorage.getItem('mp_active_profile') ? 'API ON' : 'API OFF'}
             </div>
@@ -160,14 +144,14 @@
             const temp = prompt('温度', weather.temp)||weather.temp;
             const icon = prompt('图标(如 ☀️/⛅/🌧️)', weather.icon)||weather.icon;
             setWeather({city,temp,icon});
-          }} className="tile-lg glass p-3 text-left rounded-3xl">
+          }} className="glass rounded-3xl h-[128px] p-3 text-left">
             <div className="text-[11px] opacity-75">天气</div>
             <div className="mt-3 text-3xl leading-none">{weather.icon||'⛅'}</div>
             <div className="mt-2 text-sm">{weather.city||'上海'} · {weather.temp||'27°'}</div>
           </button>
         </div>
 
-        {/* 六宫格：小红书 朋友圈 设置 相册 美化 API */}
+        {/* 六宫格 */}
         <div className="grid grid-cols-3 gap-6">
           <Tile icon="🟥" label="小红书" onClick={()=>goto('xhs')}/>
           <Tile icon="📸" label="朋友圈" onClick={()=>goto('moments')}/>
@@ -180,7 +164,6 @@
     );
   }
 
-  /* ========== Dock（底部三枚） ========== */
   function DockBar({goto}){
     const Item=({icon,label,onClick})=>(
       <button onClick={onClick} className="flex flex-col items-center gap-1">
@@ -199,7 +182,7 @@
     );
   }
 
-  /* ========== API 管理 ========== */
+  /* ========= API、多JSON、聊天、记忆 ========= */
   function APIPage({profiles,setProfiles,activeId,setActiveId}){
     const [showNew,setShowNew]=useState(false);
     const [temp,setTemp]=useState({name:'新档位', apiBase:'', apiKey:'', model:'', temperature:0.6});
@@ -274,12 +257,11 @@
     );
   }
 
-  /* ========== 聊天（微信式 + 多JSON + 记忆） ========== */
   function ChatPage({characters,setCharacters,profile}){
     const [selectedId,setSelectedId]=useState(()=>characters[0]?.id||null);
     const selected = useMemo(()=>characters.find(c=>c.id===selectedId)||null,[characters,selectedId]);
 
-    const [chatMode,setChatMode]=useState('online'); // online/offline
+    const [chatMode,setChatMode]=useState('online');
     const [burstMin,setBurstMin]=useState(2), [burstMax,setBurstMax]=useState(4);
     const storageKey = selected? `mp_thread_${selected.id}` : null;
     const [msgs,setMsgs]=useState(()=> storageKey? loadJSON(storageKey,[]) : []);
@@ -489,11 +471,9 @@
                             onChange={e=>{try{setRoleData(d=>({...d,[key]:JSON.parse(e.target.value)}))}catch{}}}/>
                 </Row>
               ))}
-
-              {/* 额外 JSON 列表 */}
               <div className="rounded-lg border border-white/10 p-2">
                 <div className="flex items-center justify-between">
-                  <div className="text-xs opacity-80">额外 JSON（剧情扩展，可多份）</div>
+                  <div className="text-xs opacity-80">额外 JSON（可多份）</div>
                   <UploadJSON onLoad={obj=>setRoleData(d=>({...d, extraList:[...d.extraList, obj]}))}/>
                 </div>
                 <div className="mt-2 space-y-2">
@@ -514,23 +494,10 @@
                 </div>
               </div>
 
-              <Row label="长期记忆">
-                <textarea className="flex-1 bg-black/50 rounded px-2 py-1 border border-white/10 min-h-[72px]"
-                          value={roleData.memoryLong} onChange={e=>setRoleData(d=>({...d,memoryLong:e.target.value}))}/>
-              </Row>
-              <Row label="永久记忆">
-                <textarea className="flex-1 bg-black/50 rounded px-2 py-1 border border-white/10 min-h-[72px]"
-                          value={roleData.memoryForever} onChange={e=>setRoleData(d=>({...d,memoryForever:e.target.value}))}/>
-              </Row>
-
-              <Row label="模型覆盖">
-                <input className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10"
-                       value={roleData.modelOverride} onChange={e=>setRoleData(d=>({...d,modelOverride:e.target.value}))}/>
-              </Row>
-              <Row label="温度">
-                <input type="number" step="0.1" min="0" max="2" className="w-20 bg-white/10 rounded px-2 py-1 border border-white/10"
-                       value={roleData.temperature} onChange={e=>setRoleData(d=>({...d,temperature:+e.target.value||0}))}/>
-              </Row>
+              <Row label="长期记忆"><textarea className="flex-1 bg-black/50 rounded px-2 py-1 border border-white/10 min-h-[72px]" value={roleData.memoryLong} onChange={e=>setRoleData(d=>({...d,memoryLong:e.target.value}))}/></Row>
+              <Row label="永久记忆"><textarea className="flex-1 bg-black/50 rounded px-2 py-1 border border-white/10 min-h-[72px]" value={roleData.memoryForever} onChange={e=>setRoleData(d=>({...d,memoryForever:e.target.value}))}/></Row>
+              <Row label="模型覆盖"><input className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10" value={roleData.modelOverride} onChange={e=>setRoleData(d=>({...d,modelOverride:e.target.value}))}/></Row>
+              <Row label="温度"><input type="number" step="0.1" min="0" max="2" className="w-20 bg-white/10 rounded px-2 py-1 border border-white/10" value={roleData.temperature} onChange={e=>setRoleData(d=>({...d,temperature:+e.target.value||0}))}/></Row>
             </div>
           </Modal>
         )}
@@ -538,7 +505,6 @@
     );
   }
 
-  /* ========== 朋友圈、小红书、音乐、联系人、占位、美化 ========== */
   function MomentsPage(){
     const [posts,setPosts]=useState(()=>loadJSON('mp_moments',[]));
     useEffect(()=>saveJSON('mp_moments',posts),[posts]);
@@ -642,7 +608,6 @@
     );
   }
 
-  /* ========== 小组件 ========== */
   const Header=({title,children})=>(
     <div className="flex items-center justify-between">
       <div className="px-4 py-1.5 rounded-2xl bg-black/50 border border-white/10">{title}</div>

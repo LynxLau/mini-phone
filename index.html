@@ -4,7 +4,6 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
   <title>Mini Phone · Chat + Music</title>
-  <!-- 依赖：Tailwind / React 18 / Babel -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
@@ -26,13 +25,13 @@
   <script type="text/babel">
     const {useState,useEffect,useMemo} = React;
 
-    /* -------- 小工具 -------- */
+    /* 工具 */
     const uid = () => Math.random().toString(36).slice(2,9);
     const loadJSON=(k,f)=>{try{const r=localStorage.getItem(k);return r?JSON.parse(r):f}catch{return f}};
     const saveJSON=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}};
     const toast=(m)=>{const el=document.createElement('div');el.className='toast';el.textContent=m;document.body.appendChild(el);setTimeout(()=>el.remove(),2200)};
 
-    /* -------- App -------- */
+    /* App */
     function App(){
       const [theme,setTheme]=useState(()=>loadJSON('mp_theme',{
         accent:'#7c5cff', bgType:'image', bgColor:'#0b0b0f', bgImage:'', blur:8, glass:true,
@@ -43,7 +42,6 @@
         characterName:'', avatar:'', temperature:0.6
       }));
       const [characters,setCharacters]=useState(()=>loadJSON('mp_chars',[]));
-
       const [playlist,setPlaylist]=useState(()=>loadJSON('mp_playlist',[{id:uid(), title:'Sleepy Cat', url:''}]));
       const [currentId,setCurrentId]=useState(()=>loadJSON('mp_current', null));
 
@@ -67,7 +65,7 @@
       );
     }
 
-    /* -------- 外层布局 -------- */
+    /* 外层 */
     function PhoneContent(props){
       const {theme,setTheme,settings,setSettings,characters,setCharacters,playlist,setPlaylist,currentId,setCurrentId} = props;
       const [screen,setScreen]=useState('home');
@@ -107,7 +105,7 @@
       </button>
     );
 
-    /* -------- 首页 + 音乐 -------- */
+    /* 首页 + 音乐 */
     function HomeGrid({goto,playlist,setPlaylist,currentId,setCurrentId}){
       const current = React.useMemo(()=> playlist.find(x=>x.id===currentId) || playlist[0], [playlist,currentId]);
       React.useEffect(()=>{ if(!current && playlist.length) setCurrentId(playlist[0].id); },[current,playlist,setCurrentId]);
@@ -186,7 +184,7 @@
       );
     }
 
-    /* -------- Header/Settings -------- */
+    /* 设置页 */
     const SimplePage=({title,back})=>(
       <div className="space-y-3">
         <Header title={title} back={back}/>
@@ -357,21 +355,15 @@
     const Row=({label,children})=>(<div className="flex items-center gap-3"><div className="w-20 shrink-0 text-xs opacity-90">{label}</div><div className="flex-1 flex items-center flex-wrap gap-2">{children}</div></div>);
     const TabButton=({active,onClick,children})=>(<button onClick={onClick} className={`px-3 py-1.5 rounded-lg border text-xs ${active?'bg-white/15 border-white/20':'bg-white/5 border-white/10 hover:bg-white/10'}`}>{children}</button>);
 
-    /* ===========================================================
-       聊天页（输入框钉底 + 设置抽屉：本地导入、主题美化可写脚本、User设定）
-       严禁 OOC：强制先读角色卡与世界书
-       =========================================================== */
+    /* 聊天页：输入粘底 + 双文件导入 + 反OOC */
     function ChatPage({settings,characters,setCharacters,back}){
       const [selectedId,setSelectedId]=useState(null);
       const selected = React.useMemo(()=>characters.find(c=>c.id===selectedId)||null,[characters,selectedId]);
 
-      // 消息
       const [msgs,setMsgs]=useState([]);
-
-      // 右侧抽屉
       const [drawerOpen,setDrawerOpen]=useState(false);
 
-      // 角色页内美化/脚本/User设定（每角色独立存储）
+      // 美化/脚本/User设定
       const [uiUserBubble,setUiUserBubble]=useState('#7c5cff');
       const [uiBotBubble,setUiBotBubble]=useState('rgba(255,255,255,0.08)');
       const [uiTextColor,setUiTextColor]=useState('#ffffff');
@@ -382,12 +374,14 @@
   const {roleName, time} = ctx;
   return { html: '🟣 ' + roleName + ' <span style="opacity:.8;margin-left:8px">' + time + '</span>' };
 }`);
-
       const [userRoleNote,setUserRoleNote]=useState('');
-      const [jsonText,setJsonText]=useState('');
+
+      // 分离的两个 JSON：角色卡与世界书
+      const [roleCardText,setRoleCardText]=useState('');
+      const [worldbookText,setWorldbookText]=useState('');
       const [jsonPreview,setJsonPreview]=useState('');
 
-      // 恢复/保存
+      // 恢复
       useEffect(()=>{
         if(!selected) return;
         const saved = loadJSON('mp_role_'+selected.id, null);
@@ -399,31 +393,39 @@
           setEnableStatus(!!saved.enableStatus);
           setStatusCode(saved.statusCode || statusCode);
           setUserRoleNote(saved.userRoleNote || '');
-          setJsonText(''); setJsonPreview('');
+
+          setRoleCardText(saved.roleData?.roleCard ? JSON.stringify(saved.roleData.roleCard, null, 2) : '');
+          setWorldbookText(saved.roleData?.worldbook ? JSON.stringify(saved.roleData.worldbook, null, 2) : '');
         }else{
           setUiUserBubble(getComputedStyle(document.documentElement).getPropertyValue('--accent') || '#7c5cff');
           setUiBotBubble('rgba(255,255,255,0.08)');
           setUiTextColor('#ffffff');
           setUiFont('');
           setEnableStatus(false);
-          setJsonText(''); setJsonPreview('');
+          setRoleCardText(''); setWorldbookText('');
         }
         setMsgs([]);
       },[selectedId]);
 
+      // 持久化
       useEffect(()=>{
         if(!selected) return;
+        const prev = loadJSON('mp_role_'+selected.id, {});
         saveJSON('mp_role_'+selected.id,{
           uiUserBubble, uiBotBubble, uiTextColor, uiFont,
           enableStatus, statusCode, userRoleNote,
-          ...(() => {
-            const s = loadJSON('mp_role_'+selected.id, {});
-            return s.roleData ? {roleData: s.roleData} : {};
-          })()
+          roleData: {
+            ...(prev.roleData||{}),
+            roleCard: roleCardText ? safeParse(roleCardText, null) : (prev.roleData?.roleCard||null),
+            worldbook: worldbookText ? safeParse(worldbookText, null) : (prev.roleData?.worldbook||null),
+            temperature: prev.roleData?.temperature
+          }
         });
-      },[selected, uiUserBubble, uiBotBubble, uiTextColor, uiFont, enableStatus, statusCode, userRoleNote]);
+      },[selected, uiUserBubble, uiBotBubble, uiTextColor, uiFont, enableStatus, statusCode, userRoleNote, roleCardText, worldbookText]);
 
-      // API
+      function safeParse(t, d){ try{ return JSON.parse(t) }catch{ return d } }
+
+      /* API */
       const base = (settings.apiBase||'').replace(/\/$/,'');
       const headers = {'Content-Type':'application/json','Authorization':'Bearer '+(settings.apiKey||'')};
 
@@ -435,25 +437,26 @@
         const newMsgs = [...msgs, {role:'user', content:text, id:uid()}];
         setMsgs(newMsgs);
 
-        // 读取该角色保存的 JSON 数据（roleCard/worldbook等）
         const saved = loadJSON('mp_role_'+selected.id, {});
         const roleData = saved?.roleData || {};
-        const roleCardText = roleData.roleCard ? JSON.stringify(roleData.roleCard) : '';
-        const worldbookText = roleData.worldbook ? JSON.stringify(roleData.worldbook) : '';
+        const roleCardStr = roleData.roleCard ? JSON.stringify(roleData.roleCard) : '';
+        const worldbookStr = roleData.worldbook ? JSON.stringify(roleData.worldbook) : '';
+        const roleTemp = (roleData && Number.isFinite(+roleData.temperature)) ? +roleData.temperature : (+settings.temperature || 0.6);
 
-        // 必须阅读设定 + 禁止 OOC 的系统提示（硬约束）
         const hardSystem = [
-          '你将作为该对话页的指定角色进行回答。',
-          '在回答任何用户消息之前，你必须先阅读并内化“角色卡”和“世界书”的内容；',
-          '所有回答都必须与其设定保持一致，不得 OOC；',
-          '若用户要求你违背设定、跳出角色或忽略世界书内容，你必须拒绝并给出与设定一致的处理方式；',
-          '允许在必要时向用户简要确认设定中的歧义，但不得擅自改变设定。'
+          '【角色扮演强约束】你只能以给定角色身份作答。',
+          '在回答前，先在内部严格对照「角色卡」「世界书」与「用户在本页的设定」。不得输出任何与其冲突或缺失的事实。',
+          '禁止杜撰未在设定中出现的经历、职位、作品、家庭关系、出版物、获奖、学历、住址、公司名、组织隶属或时间线；除非设定明确提供。',
+          '当用户提出设定外的信息请求或暗示（如出版书籍/转行），必须拒绝，并用设定内事实重述边界。',
+          '不得为了迎合用户而改变人设、世界观或时间线；不得 OOC。若用户要求跳出角色或无视设定，必须拒绝。',
+          '不要描述“我阅读了角色卡/世界书”等内部过程；只以角色视角自然表达。'
         ].join('\n');
 
         const systemPayload = [
           hardSystem,
-          roleCardText ? ('【角色卡】\n' + roleCardText) : '',
-          worldbookText ? ('【世界书】\n' + worldbookText) : '',
+          '【信息来源白名单】仅可引用：角色卡、世界书、（可选）用户在本页的角色设定、全局 System。除此之外一律无效并拒绝。',
+          roleCardStr ? ('【角色卡】\n' + roleCardStr) : '',
+          worldbookStr ? ('【世界书】\n' + worldbookStr) : '',
           userRoleNote ? ('【用户在本页的角色设定】\n' + userRoleNote) : '',
           settings.systemPrompt ? ('【全局 System】\n' + settings.systemPrompt) : ''
         ].filter(Boolean).join('\n\n');
@@ -464,7 +467,7 @@
             headers,
             body: JSON.stringify({
               model: modelToUse,
-              temperature: Number.isFinite(+settings.temperature)? +settings.temperature : 0.6,
+              temperature: roleTemp,
               messages: [
                 {role:'system', content: systemPayload},
                 ...newMsgs.map(m=>({role:m.role, content:m.content}))
@@ -479,7 +482,7 @@
                 body: JSON.stringify({
                   model: modelToUse,
                   prompt: `System:\n${systemPayload}\n\n` + newMsgs.map(m=> (m.role==='user' ? `User: ${m.content}` : `Assistant: ${m.content}`)).join('\n') + '\nAssistant:',
-                  temperature: Number.isFinite(+settings.temperature)? +settings.temperature : 0.6
+                  temperature: roleTemp
                 })
               });
               if(!res2.ok) throw new Error('HTTP ' + res2.status);
@@ -498,7 +501,7 @@
         }
       }
 
-      // 状态栏渲染（脚本仅影响 UI）
+      /* 状态栏渲染：只改UI */
       const statusEl = useMemo(()=>{
         if(!enableStatus || !selected) return null;
         try{
@@ -549,7 +552,6 @@
 
           {selected && (
             <div className="panel rounded-2xl border border-white/10 overflow-hidden">
-              {/* 顶部条 */}
               <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-black/30">
                 <div className="text-sm"><span className="opacity-70">当前：</span>{selected.name}</div>
                 <div className="flex items-center gap-2">
@@ -558,10 +560,8 @@
                 </div>
               </div>
 
-              {/* 自定义脚本状态栏 */}
               {statusEl}
 
-              {/* 主体：消息滚动 + 输入栏粘底 */}
               <div className="h-[60vh] flex flex-col">
                 <div className="flex-1 min-h-0 overflow-auto px-3 py-3 space-y-2"
                      style={{color:uiTextColor, fontFamily: uiFont || undefined}}>
@@ -587,7 +587,7 @@
             </div>
           )}
 
-          {/* 右侧抽屉：本地导入 + 主题美化（可写脚本）+ User设定 */}
+          {/* 右侧抽屉：角色卡与世界书分别导入 */}
           {selected && drawerOpen && (
             <div className="fixed inset-0 z-50">
               <div className="absolute inset-0 bg-black/50" onClick={()=>setDrawerOpen(false)} />
@@ -597,93 +597,69 @@
                   <button className="btn px-2 py-1 rounded text-xs" onClick={()=>setDrawerOpen(false)}>关闭</button>
                 </div>
 
-                {/* ① 导入世界书 / 角色卡（JSON） */}
+                {/* ① 角色卡（JSON） */}
                 <div className="rounded-lg border border-white/10 p-3 bg-white/5 space-y-2">
-                  <div className="text-sm font-medium">① 导入世界书 / 角色卡（JSON）</div>
-
+                  <div className="text-sm font-medium">① 角色卡（JSON）</div>
                   <label className="text-xs btn px-2 py-1 rounded cursor-pointer inline-flex items-center gap-2">
                     选择本地文件
                     <input type="file" accept=".json,application/json" className="hidden"
                       onChange={async e=>{
                         const f=e.target.files&&e.target.files[0]; if(!f) return;
-                        const t=await f.text();
-                        setJsonText(t);
-                        try{ const obj=JSON.parse(t||'{}'); setJsonPreview(JSON.stringify(obj,null,2)); }
-                        catch(err){ setJsonPreview('JSON 解析失败：'+err.message); }
+                        const t=await f.text(); setRoleCardText(t);
+                        try{ JSON.parse(t); jsonPreview && setJsonPreview(''); }catch(err){ setJsonPreview('角色卡解析失败：'+err.message); }
                       }}/>
                   </label>
-
                   <textarea className="w-full h-28 bg-black/60 border border-white/10 rounded p-2 text-xs font-mono"
-                            placeholder='粘贴或编辑 JSON，如 {"roleName":"Gavriel","worldbook":{...}}'
-                            value={jsonText} onChange={e=>setJsonText(e.target.value)} />
-                  <div className="flex gap-2">
-                    <button className="btn px-3 py-1 rounded text-xs" onClick={()=>{
-                      try{ const obj = JSON.parse(jsonText||'{}'); setJsonPreview(JSON.stringify(obj,null,2)); }
-                      catch(err){ setJsonPreview('JSON 解析失败：'+err.message); }
-                    }}>预览解析</button>
-                    <button className="px-3 py-1 rounded bg-[var(--accent)] text-white text-xs" onClick={()=>{
-                      try{
-                        const obj = JSON.parse(jsonText||'{}');
-                        if(obj.style){
-                          if(obj.style.userBubble) setUiUserBubble(obj.style.userBubble);
-                          if(obj.style.botBubble)  setUiBotBubble(obj.style.botBubble);
-                          if(obj.style.textColor)  setUiTextColor(obj.style.textColor);
-                          if(obj.style.fontFamily) setUiFont(obj.style.fontFamily);
-                        }
-                        if(obj.scripts && obj.scripts.status){ setStatusCode(obj.scripts.status); setEnableStatus(true); }
-                        if(obj.userRoleNote){ setUserRoleNote(obj.userRoleNote); }
-                        const saved = loadJSON('mp_role_'+selected.id, {});
-                        saveJSON('mp_role_'+selected.id, {...saved, roleData: obj});
-                        setJsonPreview('已应用并保存到本角色');
-                      }catch(err){ setJsonPreview('应用失败：'+err.message); }
-                    }}>应用</button>
-                  </div>
-                  <pre className="text-xs font-mono whitespace-pre-wrap bg-black/40 border border-white/10 rounded p-2">{jsonPreview}</pre>
+                            placeholder='粘贴或编辑 角色卡 JSON'
+                            value={roleCardText} onChange={e=>setRoleCardText(e.target.value)} />
                 </div>
 
-                {/* ② 主题美化（可写脚本） */}
+                {/* ② 世界书（JSON） */}
+                <div className="rounded-lg border border-white/10 p-3 bg-white/5 space-y-2 mt-3">
+                  <div className="text-sm font-medium">② 世界书（JSON）</div>
+                  <label className="text-xs btn px-2 py-1 rounded cursor-pointer inline-flex items-center gap-2">
+                    选择本地文件
+                    <input type="file" accept=".json,application/json" className="hidden"
+                      onChange={async e=>{
+                        const f=e.target.files&&e.target.files[0]; if(!f) return;
+                        const t=await f.text(); setWorldbookText(t);
+                        try{ JSON.parse(t); jsonPreview && setJsonPreview(''); }catch(err){ setJsonPreview('世界书解析失败：'+err.message); }
+                      }}/>
+                  </label>
+                  <textarea className="w-full h-28 bg-black/60 border border-white/10 rounded p-2 text-xs font-mono"
+                            placeholder='粘贴或编辑 世界书 JSON'
+                            value={worldbookText} onChange={e=>setWorldbookText(e.target.value)} />
+                </div>
+
+                {/* ③ 主题美化（可写脚本） */}
                 <div className="rounded-lg border border-white/10 p-3 bg-white/5 space-y-3 mt-3">
-                  <div className="text-sm font-medium">② 主题美化（可写脚本）</div>
-                  <div className="flex items-center gap-3 text-xs">
-                    <span className="w-20 opacity-80">用户气泡</span>
-                    <input type="color" value={uiUserBubble} onChange={e=>setUiUserBubble(e.target.value)} />
-                  </div>
-                  <div className="flex items-center gap-3 text-xs">
-                    <span className="w-20 opacity-80">角色气泡</span>
-                    <input type="color" value={colorToHex(uiBotBubble)} onChange={e=>setUiBotBubble(e.target.value)} />
-                  </div>
-                  <div className="flex items-center gap-3 text-xs">
-                    <span className="w-20 opacity-80">文字颜色</span>
-                    <input type="color" value={uiTextColor} onChange={e=>setUiTextColor(e.target.value)} />
-                  </div>
+                  <div className="text-sm font-medium">③ 主题美化（可写脚本）</div>
+                  <div className="flex items-center gap-3 text-xs"><span className="w-20 opacity-80">用户气泡</span><input type="color" value={uiUserBubble} onChange={e=>setUiUserBubble(e.target.value)} /></div>
+                  <div className="flex items-center gap-3 text-xs"><span className="w-20 opacity-80">角色气泡</span><input type="color" value={colorToHex(uiBotBubble)} onChange={e=>setUiBotBubble(e.target.value)} /></div>
+                  <div className="flex items-center gap-3 text-xs"><span className="w-20 opacity-80">文字颜色</span><input type="color" value={uiTextColor} onChange={e=>setUiTextColor(e.target.value)} /></div>
                   <div className="flex items-center gap-3 text-xs">
                     <span className="w-20 opacity-80">字体栈</span>
                     <input className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10"
                            placeholder='Inter, Noto Sans SC, PingFang SC, Microsoft YaHei'
                            value={uiFont} onChange={e=>setUiFont(e.target.value)} />
                   </div>
-
                   <label className="flex items-center gap-2 text-xs mt-2">
                     <input type="checkbox" checked={enableStatus} onChange={e=>setEnableStatus(e.target.checked)} />
                     启用自定义 UI 脚本
                   </label>
                   <textarea className="w-full h-28 bg-black/60 border border-white/10 rounded p-2 text-xs font-mono"
-                            placeholder={`// 返回字符串或 {html: '<b>..</b>'}
-function renderStatus(ctx){
-  const {roleName, time} = ctx;
-  return { html: '🟣 ' + roleName + ' <span style="opacity:.8;margin-left:8px">' + time + '</span>' };
-}`}
+                            placeholder={`// 返回字符串或 {html:'...'}\nfunction renderStatus(ctx){\n  const {roleName, time} = ctx;\n  return { html: '🟣 ' + roleName + ' <span style=\"opacity:.8;margin-left:8px\">' + time + '</span>' };\n}`}
                             value={statusCode} onChange={e=>setStatusCode(e.target.value)} />
-                  <div className="text-[11px] opacity-80">提示：脚本只影响本页 UI（如状态栏文字），不参与模型推理。</div>
                 </div>
 
-                {/* ③ User 的本页角色设定 */}
+                {/* ④ User 的本页角色设定 */}
                 <div className="rounded-lg border border-white/10 p-3 bg-white/5 space-y-2 mt-3">
-                  <div className="text-sm font-medium">③ User 的本页角色设定</div>
+                  <div className="text-sm font-medium">④ User 的本页角色设定</div>
                   <textarea className="w-full h-24 bg-black/60 border border-white/10 rounded p-2 text-sm"
                             placeholder="写清你在此页的身份、语气、边界等"
                             value={userRoleNote} onChange={e=>setUserRoleNote(e.target.value)} />
-                  <div className="flex justify-end">
+                  <div className="flex justify-between items-center">
+                    <div className="text-[11px] opacity-80">{jsonPreview}</div>
                     <button className="px-3 py-1 rounded bg-[var(--accent)] text-white text-xs" onClick={()=>toast('已保存')}>
                       保存
                     </button>
@@ -706,7 +682,7 @@ function renderStatus(ctx){
       return `#${to(m[1])}${to(m[2])}${to(m[3])}`;
     }
 
-    /* -------- 输入框组件（回车发送，粘底容器里） -------- */
+    /* 输入框粘底 */
     const ChatInput=({onSend})=>{
       const [v,setV]=useState('');
       return (
@@ -722,7 +698,7 @@ function renderStatus(ctx){
       );
     };
 
-    /* -------- 渲染 -------- */
+    /* 渲染 */
     ReactDOM.createRoot(document.getElementById('app')).render(<App/>);
   </script>
 </body>

@@ -46,11 +46,15 @@
       const [apiProfiles,setApiProfiles]=useState(()=>loadJSON('mp_api_profiles',[
         {id:uid(), name:'默认', apiBase:'https://api.skyi.cc/v1', apiKey:'', model:'gemini 2.5 pro', temperature:0.6}
       ]));
-      const [activeProfileId,setActiveProfileId]=useState(()=>loadJSON('mp_active_profile', apiProfiles[0]?.id || null));
+      const [activeProfileId,setActiveProfileId]=useState(()=>loadJSON('mp_active_profile', null));
 
       const [characters,setCharacters]=useState(()=>loadJSON('mp_chars',[]));
-      const [screen,setScreen]=useState('chat'); // 默认直进聊天
-      const activeProfile = useMemo(()=> apiProfiles.find(p=>p.id===activeProfileId) || apiProfiles[0], [apiProfiles,activeProfileId]);
+      const [screen,setScreen]=useState('home'); // 回到漂亮主页
+      const activeProfile = useMemo(()=> {
+        const def = apiProfiles[0]; 
+        const id = activeProfileId || def?.id || null;
+        return apiProfiles.find(p=>p.id===id) || def || {apiBase:'',apiKey:'',model:'',temperature:0.6};
+      }, [apiProfiles,activeProfileId]);
 
       useEffect(()=>saveJSON('mp_theme',theme),[theme]);
       useEffect(()=>saveJSON('mp_api_profiles',apiProfiles),[apiProfiles]);
@@ -69,7 +73,7 @@
                 <div className="text-xs text-white/80">{new Date().toTimeString().slice(0,5)}</div>
                 <div className="flex items-center gap-2">
                   <select className="text-[11px] bg-black/50 border border-white/10 rounded px-2 py-1"
-                          value={activeProfileId||''}
+                          value={activeProfile?.id||''}
                           onChange={e=>setActiveProfileId(e.target.value)}>
                     {apiProfiles.map(p=><option key={p.id} value={p.id}>{p.name} · {p.model||'未设模型'}</option>)}
                   </select>
@@ -79,6 +83,7 @@
 
               {/* 主体页 */}
               <div className="flex-1 overflow-auto px-4 pb-4 space-y-3">
+                {screen==='home' && <HomePage goto={setScreen} />}
                 {screen==='chat' && <ChatPage theme={theme} characters={characters} setCharacters={setCharacters}
                   profile={activeProfile} setProfile={(patch)=>setApiProfiles(ps=>ps.map(p=>p.id===activeProfile.id?{...p,...patch}:p))} />}
                 {screen==='xhs' && <XHSPage/>}
@@ -106,6 +111,49 @@
     const DockBtn=({children,label,onClick})=>(
       <button onClick={onClick} className="flex flex-col items-center gap-1">
         <div className="w-12 h-12 rounded-2xl panel grid place-items-center text-xl">{children}</div>
+        <div className="text-xs opacity-90">{label}</div>
+      </button>
+    );
+
+    /* ------------- Home Page（你的漂亮主页） ------------- */
+    function HomePage({goto}){
+      return (
+        <div className="space-y-3">
+          <div className="panel rounded-2xl p-4">
+            <div className="flex items-start gap-3">
+              <div className="w-16 h-16 rounded-2xl bg-black/50 border border-white/10 grid place-items-center">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-black/40 to-black/80 grid place-items-center">
+                  <div className="w-2 h-2 bg-white/80 rounded-full"></div>
+                </div>
+              </div>
+              <div className="flex-1">
+                <div className="text-base font-medium">Mini Phone</div>
+                <div className="text-xs opacity-80">聊天 · 音乐 · 社交 · 浏览</div>
+                <div className="mt-2 flex gap-2">
+                  <button onClick={()=>goto('chat')} className="px-3 py-1.5 rounded bg-[var(--accent)] text-white text-xs">立即聊天</button>
+                  <button onClick={()=>goto('music')} className="px-3 py-1.5 rounded bg-white/10 border border-white/10 text-xs">听歌</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="panel rounded-2xl h-28" />
+            <div className="panel rounded-2xl h-28" />
+          </div>
+          <div className="grid grid-cols-3 gap-6 pt-2">
+            <IconBtn label="聊天" onClick={()=>goto('chat')}>💬</IconBtn>
+            <IconBtn label="小红书" onClick={()=>goto('xhs')}>📕</IconBtn>
+            <IconBtn label="音乐" onClick={()=>goto('music')}>🎵</IconBtn>
+            <IconBtn label="朋友圈" onClick={()=>goto('moments')}>🫶</IconBtn>
+            <IconBtn label="设置" onClick={()=>goto('settings')}>⚙️</IconBtn>
+            <IconBtn label="相册" onClick={()=>toast('暂未开放')}>🖼️</IconBtn>
+          </div>
+        </div>
+      );
+    }
+    const IconBtn=({children,label,onClick})=>(
+      <button onClick={onClick} className="flex flex-col items-center gap-2">
+        <div className="w-16 h-16 rounded-2xl panel grid place-items-center text-2xl">{children}</div>
         <div className="text-xs opacity-90">{label}</div>
       </button>
     );
@@ -222,7 +270,6 @@
             temperature: Number.isFinite(+roleData.temperature)? +roleData.temperature : (+profile.temperature||0.6),
             system: systemPayload, history: history.map(({role,content})=>({role,content})), maxTokens: approxTokens
           });
-          // 拆分
           if(chatMode==='online'){
             const parts = String(content).split(/\n---\n/).map(s=>s.trim()).filter(Boolean);
             const n = Math.max(burstMin, Math.min(burstMax, parts.length || burstMin));
@@ -269,7 +316,6 @@
         }catch(e){ toast('记忆生成失败：'+(e.message||e)) }
       }
 
-      // UI 组件
       return (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
@@ -362,18 +408,9 @@
                           onChange={e=>setRoleData(d=>({...d,temperature:+e.target.value||0}))} className="w-20 bg-white/10 border border-white/10 rounded px-2 py-1"/></Row>
                 <Row label="模型覆盖"><input className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10" placeholder={`优先于档位：${profile.model||'未设'}`}
                           value={roleModel} onChange={e=>setRoleModel(e.target.value)}/></Row>
-              </section>
-
-              <Hr/>
-
-              <section className="space-y-2">
-                <h4 className="text-sm font-medium">长期记忆</h4>
-                <textarea className="w-full h-24 bg-black/60 border border-white/10 rounded p-2 text-xs"
-                          value={roleData.memory||''} onChange={e=>setRoleData(d=>({...d,memory:e.target.value}))}
-                          placeholder="AI 总结出的不变要点，作为人设坚固层。"/>
                 <div className="flex gap-2">
-                  <button className="px-3 py-1 rounded bg-[var(--accent)] text-white text-xs" onClick={buildMemory}>从最近对话生成</button>
-                  <button className="px-3 py-1 rounded btn text-xs" onClick={()=>{setRoleData(d=>({...d,memory:''})); toast('已清空记忆')}}>清空</button>
+                  <button className="px-3 py-1 rounded bg-[var(--accent)] text-white text-xs" onClick={buildMemory}>从最近对话生成长期记忆</button>
+                  <button className="px-3 py-1 rounded btn text-xs" onClick={()=>{setRoleData(d=>({...d,memory:''})); toast('已清空记忆')}}>清空记忆</button>
                 </div>
               </section>
             </SideDrawer>
@@ -473,9 +510,6 @@
     function XHSPage(){
       const [url,setUrl]=useState('https://www.xiaohongshu.com/explore');
       const [embedOk,setEmbedOk]=useState(true);
-      useEffect(()=>{
-        // 简单探测：试图加载，若 onload/onerror 告警则提示外开
-      },[url]);
       return (
         <div className="space-y-3">
           <Header title="小红书" />
@@ -488,7 +522,7 @@
                   const f=document.getElementById('xhs_iframe');
                   if(f) f.src=url;
                   setEmbedOk(true);
-                  setTimeout(()=>{ // 粗糙兜底：若 1.2s 内未能与 iframe 通信，改外开
+                  setTimeout(()=>{ 
                     if(!f || !f.contentWindow){ window.open(url,'_blank'); setEmbedOk(false); }
                   },1200);
                 }catch{ window.open(url,'_blank'); setEmbedOk(false); }
@@ -635,7 +669,7 @@
                       <Row label="API Base"><input className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10" value={p.apiBase} onChange={e=>setApiProfiles(ps=>ps.map(x=>x.id===p.id?{...x,apiBase:e.target.value}:x))}/></Row>
                       <Row label="API Key"><input type="password" className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10" value={p.apiKey} onChange={e=>setApiProfiles(ps=>ps.map(x=>x.id===p.id?{...x,apiKey:e.target.value}:x))}/></Row>
                       <Row label="模型"><input className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10" value={p.model} onChange={e=>setApiProfiles(ps=>ps.map(x=>x.id===p.id?{...x,model:e.target.value}:x))}/></Row>
-                      <Row label="温度"><input type="number" step="0.1" min="0" max="2" className="w-20 bg-white/10 rounded px-2 py-1 border border-white/10" value={p.temperature} onChange={e=>setApiProfiles(ps=>ps.map(x=>x.id===p.id?{...x,temperature:+e.target.value||0}:x))}/></Row>
+                      <Row label="温度"><input type="number" step="0.1" min="0" max="2" className="w-20 bg白/10 rounded px-2 py-1 border border-white/10" value={p.temperature} onChange={e=>setApiProfiles(ps=>ps.map(x=>x.id===p.id?{...x,temperature:+e.target.value||0}:x))}/></Row>
                     </div>
                   </div>
                 ))}

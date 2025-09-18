@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-  <title>Mini Phone · Chat + Feeds + Music</title>
+  <title>Mini Phone · v2</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
@@ -13,8 +13,8 @@
     html,body{height:100%; background:#0a0a0a;}
     body{margin:0; display:grid; place-items:center; overflow:hidden;}
     .phone-wrap{height:100dvh; aspect-ratio:9/19.5; max-height:900px; max-width:min(520px, 100vw); padding:16px;}
-    .panel { background: rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.08); }
-    .btn { background: rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.12); }
+    .panel{ background: rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.08); }
+    .btn{ background: rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.12); }
     .btn:hover{ background: rgba(255,255,255,0.12); }
     .toast{position:fixed; left:50%; transform:translateX(-50%); bottom:20px; padding:8px 12px; border-radius:10px; background:#d33; color:#fff; font-size:12px; z-index:9999;}
     .bubble{word-break:break-word; white-space:pre-wrap;}
@@ -24,703 +24,644 @@
   <div id="app"></div>
 
   <script type="text/babel">
-    const {useState,useEffect,useMemo,useRef} = React;
+  const {useState,useEffect,useMemo,useRef} = React;
 
-    /* ------------- Utils ------------- */
-    const uid = () => Math.random().toString(36).slice(2,9);
-    const loadJSON=(k,f)=>{try{const r=localStorage.getItem(k);return r?JSON.parse(r):f}catch{return f}};
-    const saveJSON=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}};
-    const toast=(m)=>{const el=document.createElement('div');el.className='toast';el.textContent=m;document.body.appendChild(el);setTimeout(()=>el.remove(),2200)};
+  /* ========== utils ========== */
+  const uid=()=>Math.random().toString(36).slice(2,9);
+  const loadJSON=(k,f)=>{try{const r=localStorage.getItem(k);return r?JSON.parse(r):f}catch{return f}};
+  const saveJSON=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}};
+  const toast=(m)=>{const el=document.createElement('div');el.className='toast';el.textContent=m;document.body.appendChild(el);setTimeout(()=>el.remove(),2200)};
 
-    function colorToHex(c){ const ctx = document.createElement('canvas').getContext('2d'); ctx.fillStyle = c; const comp = ctx.fillStyle;
-      if(comp.startsWith('#')) return comp; const m = comp.match(/rgba?\((\d+), ?(\d+), ?(\d+)/i);
-      if(!m) return '#ffffff'; const to = n=> (+n).toString(16).padStart(2,'0'); return `#${to(m[1])}${to(m[2])}${to(m[3])}`;}
+  function App(){
+    const [theme,setTheme]=useState(()=>loadJSON('mp_theme',{
+      accent:'#7c5cff', bgType:'image', bgColor:'#0b0b0f', bgImage:'', blur:8, glass:true,
+      font:'Inter, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, Segoe UI, Roboto'
+    }));
+    // API 档位
+    const [apiProfiles,setApiProfiles]=useState(()=>loadJSON('mp_api_profiles',[
+      {id:uid(), name:'默认', apiBase:'https://api.skyi.cc/v1', apiKey:'', model:'gemini 2.5 pro', temperature:0.6}
+    ]));
+    const [activeProfileId,setActiveProfileId]=useState(()=>loadJSON('mp_active_profile', apiProfiles[0]?.id || null));
+    const profile = useMemo(()=> apiProfiles.find(p=>p.id===activeProfileId) || apiProfiles[0], [apiProfiles,activeProfileId]);
 
-    /* ------------- App Shell ------------- */
-    function App(){
-      const [theme,setTheme]=useState(()=>loadJSON('mp_theme',{
-        accent:'#7c5cff', bgType:'image', bgColor:'#0b0b0f', bgImage:'', blur:8, glass:true,
-        font:'Inter, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, Segoe UI, Roboto'
-      }));
-      // 多 API 档位：可快速切换不同网关/模型
-      const [apiProfiles,setApiProfiles]=useState(()=>loadJSON('mp_api_profiles',[
-        {id:uid(), name:'默认', apiBase:'https://api.skyi.cc/v1', apiKey:'', model:'gemini 2.5 pro', temperature:0.6}
-      ]));
-      const [activeProfileId,setActiveProfileId]=useState(()=>loadJSON('mp_active_profile', null));
+    const [characters,setCharacters]=useState(()=>loadJSON('mp_chars',[]));
+    const [screen,setScreen]=useState('home');
 
-      const [characters,setCharacters]=useState(()=>loadJSON('mp_chars',[]));
-      const [screen,setScreen]=useState('home'); // 回到漂亮主页
-      const activeProfile = useMemo(()=> {
-        const def = apiProfiles[0]; 
-        const id = activeProfileId || def?.id || null;
-        return apiProfiles.find(p=>p.id===id) || def || {apiBase:'',apiKey:'',model:'',temperature:0.6};
-      }, [apiProfiles,activeProfileId]);
+    // 天气占位
+    const [weather,setWeather]=useState(()=>loadJSON('mp_weather',{city:'上海', temp:'27°', icon:'☁️'}));
+    useEffect(()=>saveJSON('mp_theme',theme),[theme]);
+    useEffect(()=>saveJSON('mp_api_profiles',apiProfiles),[apiProfiles]);
+    useEffect(()=>saveJSON('mp_active_profile',activeProfileId),[activeProfileId]);
+    useEffect(()=>saveJSON('mp_chars',characters),[characters]);
+    useEffect(()=>saveJSON('mp_weather',weather),[weather]);
 
-      useEffect(()=>saveJSON('mp_theme',theme),[theme]);
-      useEffect(()=>saveJSON('mp_api_profiles',apiProfiles),[apiProfiles]);
-      useEffect(()=>saveJSON('mp_active_profile',activeProfileId),[activeProfileId]);
-      useEffect(()=>saveJSON('mp_chars',characters),[characters]);
-
-      return (
-        <div className="phone-wrap w-full">
-          <div className="relative w-full h-full rounded-[32px] border border-white/15 shadow-2xl overflow-hidden bg-black/80 text-white"
-               style={{fontFamily:theme.font, backgroundImage: theme.bgType==='image' && theme.bgImage ? `url(${theme.bgImage})` : 'none', backgroundSize:'cover', backgroundPosition:'center'}}>
-            <div className="absolute inset-0" style={{backdropFilter:`blur(${theme.blur}px)`}}/>
-            <div className="absolute left-1/2 -translate-x-1/2 top-2 w-40 h-4 rounded-full bg-black/60 border border-white/10" />
-            <div className="absolute inset-0 flex flex-col">
-              {/* 顶部状态 */}
-              <div className="p-3 flex items-center justify-between">
-                <div className="text-xs text-white/80">{new Date().toTimeString().slice(0,5)}</div>
-                <div className="flex items-center gap-2">
-                  <select className="text-[11px] bg-black/50 border border-white/10 rounded px-2 py-1"
-                          value={activeProfile?.id||''}
-                          onChange={e=>setActiveProfileId(e.target.value)}>
-                    {apiProfiles.map(p=><option key={p.id} value={p.id}>{p.name} · {p.model||'未设模型'}</option>)}
-                  </select>
-                  <button className="text-xs px-2 py-1 rounded btn" onClick={()=>setScreen('settings')}>⚙️</button>
-                </div>
-              </div>
-
-              {/* 主体页 */}
-              <div className="flex-1 overflow-auto px-4 pb-4 space-y-3">
-                {screen==='home' && <HomePage goto={setScreen} />}
-                {screen==='chat' && <ChatPage theme={theme} characters={characters} setCharacters={setCharacters}
-                  profile={activeProfile} setProfile={(patch)=>setApiProfiles(ps=>ps.map(p=>p.id===activeProfile.id?{...p,...patch}:p))} />}
-                {screen==='xhs' && <XHSPage/>}
-                {screen==='music' && <MusicPage/>}
-                {screen==='moments' && <MomentsPage profile={activeProfile}/>}
-                {screen==='settings' && <SettingsPage theme={theme} setTheme={setTheme}
-                  apiProfiles={apiProfiles} setApiProfiles={setApiProfiles} activeProfileId={activeProfileId} setActiveProfileId={setActiveProfileId}
-                />}
-              </div>
-
-              {/* Dock */}
-              <div className="px-4 pb-5">
-                <div className="panel rounded-2xl p-3 grid grid-cols-4 gap-2">
-                  <DockBtn label="聊天" onClick={()=>setScreen('chat')}>💬</DockBtn>
-                  <DockBtn label="小红书" onClick={()=>setScreen('xhs')}>📕</DockBtn>
-                  <DockBtn label="音乐" onClick={()=>setScreen('music')}>🎵</DockBtn>
-                  <DockBtn label="朋友圈" onClick={()=>setScreen('moments')}>🫶</DockBtn>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      );
-    }
-    const DockBtn=({children,label,onClick})=>(
-      <button onClick={onClick} className="flex flex-col items-center gap-1">
-        <div className="w-12 h-12 rounded-2xl panel grid place-items-center text-xl">{children}</div>
-        <div className="text-xs opacity-90">{label}</div>
-      </button>
-    );
-
-    /* ------------- Home Page（你的漂亮主页） ------------- */
-    function HomePage({goto}){
-      return (
-        <div className="space-y-3">
-          <div className="panel rounded-2xl p-4">
-            <div className="flex items-start gap-3">
-              <div className="w-16 h-16 rounded-2xl bg-black/50 border border-white/10 grid place-items-center">
-                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-black/40 to-black/80 grid place-items-center">
-                  <div className="w-2 h-2 bg-white/80 rounded-full"></div>
-                </div>
-              </div>
-              <div className="flex-1">
-                <div className="text-base font-medium">Mini Phone</div>
-                <div className="text-xs opacity-80">聊天 · 音乐 · 社交 · 浏览</div>
-                <div className="mt-2 flex gap-2">
-                  <button onClick={()=>goto('chat')} className="px-3 py-1.5 rounded bg-[var(--accent)] text-white text-xs">立即聊天</button>
-                  <button onClick={()=>goto('music')} className="px-3 py-1.5 rounded bg-white/10 border border-white/10 text-xs">听歌</button>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="panel rounded-2xl h-28" />
-            <div className="panel rounded-2xl h-28" />
-          </div>
-          <div className="grid grid-cols-3 gap-6 pt-2">
-            <IconBtn label="聊天" onClick={()=>goto('chat')}>💬</IconBtn>
-            <IconBtn label="小红书" onClick={()=>goto('xhs')}>📕</IconBtn>
-            <IconBtn label="音乐" onClick={()=>goto('music')}>🎵</IconBtn>
-            <IconBtn label="朋友圈" onClick={()=>goto('moments')}>🫶</IconBtn>
-            <IconBtn label="设置" onClick={()=>goto('settings')}>⚙️</IconBtn>
-            <IconBtn label="相册" onClick={()=>toast('暂未开放')}>🖼️</IconBtn>
-          </div>
-        </div>
-      );
-    }
-    const IconBtn=({children,label,onClick})=>(
-      <button onClick={onClick} className="flex flex-col items-center gap-2">
-        <div className="w-16 h-16 rounded-2xl panel grid place-items-center text-2xl">{children}</div>
-        <div className="text-xs opacity-90">{label}</div>
-      </button>
-    );
-
-    /* ------------- Chat Page ------------- */
-    function ChatPage({theme,characters,setCharacters,profile,setProfile}){
-      const [selectedId,setSelectedId]=useState(()=>characters[0]?.id||null);
-      const selected = useMemo(()=>characters.find(c=>c.id===selectedId)||null,[characters,selectedId]);
-
-      const [drawerOpen,setDrawerOpen]=useState(false);
-
-      // 线上/线下
-      const [chatMode,setChatMode]=useState('online'); // online | offline
-      const [burstMin,setBurstMin]=useState(2);
-      const [burstMax,setBurstMax]=useState(4);
-
-      // 消息历史 & 记忆（按角色）
-      const storageKey = selected ? `mp_thread_${selected.id}` : null;
-      const [msgs,setMsgs]=useState(()=> storageKey ? loadJSON(storageKey, []) : []);
-      useEffect(()=>{ if(storageKey) saveJSON(storageKey,msgs) },[storageKey,msgs]);
-
-      // UI per-role
-      const [ui,setUi]=useState({user:'#7c5cff', bot:'rgba(255,255,255,0.08)', text:'#fff', font:''});
-
-      // 角色数据：卡/世界书/预设与正则/温度/记忆
-      const [roleData,setRoleData]=useState({ roleCard:null, worldbook:null, presets:'', regex:'', temperature:0.6, memory:'' });
-      // 每个角色自己的 API 模型覆盖（可不填）
-      const [roleModel,setRoleModel]=useState('');
-
-      useEffect(()=>{
-        if(!selected) return;
-        const saved = loadJSON('mp_role_'+selected.id, null);
-        if(saved){
-          setUi(saved.ui||{user:'#7c5cff',bot:'rgba(255,255,255,0.08)',text:'#fff',font:''});
-          setRoleData(saved.roleData||{});
-          setChatMode(saved.chatMode||'online');
-          setBurstMin(saved.burstMin ?? 2);
-          setBurstMax(saved.burstMax ?? 4);
-          setRoleModel(saved.roleModel||'');
-          const loaded = loadJSON(`mp_thread_${selected.id}`, []);
-          setMsgs(loaded);
-        }else{
-          setUi({user:colorToHex(getComputedStyle(document.documentElement).getPropertyValue('--accent')||'#7c5cff'),bot:'rgba(255,255,255,0.08)',text:'#fff',font:''});
-          setRoleData({ roleCard:null, worldbook:null, presets:'', regex:'', temperature:0.6, memory:'' });
-          setMsgs([]);
-        }
-      },[selectedId]);
-
-      useEffect(()=>{
-        if(!selected) return;
-        saveJSON('mp_role_'+selected.id,{ ui, roleData, chatMode, burstMin, burstMax, roleModel });
-      },[selected, ui, roleData, chatMode, burstMin, burstMax, roleModel]);
-
-      // API adapter
-      async function chatComplete({ base, key, model, temperature, system, history, maxTokens }) {
-        const b = (base||'').replace(/\/$/,''); const headers = { 'Content-Type':'application/json','Authorization':'Bearer '+key };
-        const r = await fetch(b + '/chat/completions', {
-          method:'POST', headers,
-          body: JSON.stringify({ model, temperature, max_tokens:maxTokens, messages:[{role:'system',content:system}, ...history] })
-        });
-        if(!r.ok && r.status===404){
-          const r2 = await fetch(b + '/completions', {
-            method:'POST', headers,
-            body: JSON.stringify({
-              model, temperature, max_tokens:maxTokens,
-              prompt: `System:\n${system}\n\n` + history.map(m => `${m.role==='user'?'User':'Assistant'}: ${m.content}`).join('\n') + '\nAssistant:'
-            })
-          });
-          if(!r2.ok) throw new Error('HTTP '+r2.status);
-          const d2 = await r2.json(); return d2?.choices?.[0]?.text ?? '[empty]';
-        }
-        if(!r.ok) throw new Error('HTTP '+r.status);
-        const d = await r.json(); return d?.choices?.[0]?.message?.content ?? '[empty]';
-      }
-
-      function buildSystem(){
-        const roleCardStr = roleData.roleCard ? JSON.stringify(roleData.roleCard) : '';
-        const worldbookStr = roleData.worldbook ? JSON.stringify(roleData.worldbook) : '';
-        const hard = [
-          '【角色扮演强约束】仅以给定角色发言；禁止复述设定条目；越界请求直接拒绝。',
-          '先对照「角色卡」「世界书」「用户预设」，不得冲突或杜撰简历/出版/获奖/组织/时间线。',
-          '不暴露系统或“我看了角色卡”等内部过程。'
-        ].join('\n');
-        const style = chatMode==='online'
-          ? `【对话形态：线上】即时通讯风，一次输出 ${burstMin}-${burstMax} 条短句，用分隔符 \\n---\\n 切分；每条≤140字，避免说明文。`
-          : `【对话形态：线下】剧情长文可含（内心活动）与旁白；单条≤900字。`;
-        const presets = roleData.presets ? ('【预设】\n'+roleData.presets) : '';
-        const regex = roleData.regex ? ('【正则过滤】若输出命中以下规则，先在内部替换/删除后再返回：\n'+roleData.regex) : '';
-        const memory = roleData.memory ? ('【角色长期记忆】\n'+roleData.memory) : '';
-        return [
-          hard, style,
-          '【信息来源白名单】仅可引用：角色卡、世界书、用户预设/记忆、全局 System。',
-          '【示例】\n用户：在干嘛？\n线上：（多条短句）“在片场。”\\n---\\n“十分钟后收工。”\\n---\\n“你到哪了？”\n线下：（内心+对白）（咖啡凉透）“等你。”',
-          roleCardStr ? ('【角色卡】\n'+roleCardStr):'',
-          worldbookStr ? ('【世界书】\n'+worldbookStr):'',
-          presets, memory, regex
-        ].filter(Boolean).join('\n\n');
-      }
-
-      // 发送文本/图片/表情
-      async function sendText(text){
-        if(!text?.trim()) return;
-        const history = [...msgs, {role:'user',content:text,id:uid()}];
-        setMsgs(history);
-        const apiBase = profile.apiBase, apiKey = profile.apiKey;
-        const modelToUse = roleModel || profile.model;
-        if(!apiBase || !apiKey || !modelToUse){ toast('API 未设置完整'); return; }
-        const maxChars = chatMode==='online' ? 140 : 900;
-        const approxTokens = Math.max(64, Math.min(1024, Math.round(maxChars*1.8)));
-        const systemPayload = buildSystem();
-        try{
-          const content = await chatComplete({
-            base: apiBase, key: apiKey, model: modelToUse,
-            temperature: Number.isFinite(+roleData.temperature)? +roleData.temperature : (+profile.temperature||0.6),
-            system: systemPayload, history: history.map(({role,content})=>({role,content})), maxTokens: approxTokens
-          });
-          if(chatMode==='online'){
-            const parts = String(content).split(/\n---\n/).map(s=>s.trim()).filter(Boolean);
-            const n = Math.max(burstMin, Math.min(burstMax, parts.length || burstMin));
-            setMsgs(m=>{
-              const base=[...m];
-              for(let i=0;i<n;i++) base.push({id:uid(), role:'assistant', content:parts[i]||''});
-              return base;
-            });
-          }else{
-            setMsgs(m=>[...m,{id:uid(), role:'assistant', content:String(content).trim()}]);
-          }
-        }catch(e){ toast('请求失败：'+(e.message||e)) }
-      }
-
-      function sendImage(file){
-        const r = new FileReader();
-        r.onload=()=> setMsgs(m=>[...m,{id:uid(), role:'user', type:'image', url:r.result}]);
-        r.readAsDataURL(file);
-      }
-      function sendSticker(text){ setMsgs(m=>[...m,{id:uid(), role:'user', type:'sticker', content:text}]); }
-
-      async function buildMemory(){
-        const apiBase = profile.apiBase, apiKey = profile.apiKey, modelToUse = roleModel || profile.model;
-        if(!apiBase || !apiKey || !modelToUse){ toast('API 未设置完整'); return; }
-        const recent = msgs.slice(-30).map(m=>`${m.role==='user'?'用户':'角色'}: ${m.type?'[媒体]':m.content}`).join('\n');
-        const prompt = [
-          '请从以下对话中提炼「长期稳定、不易变化、对持续扮演最重要」的信息，输出 3-8 条 bullet：',
-          '- 人际关系与身份标签（非八卦）',
-          '- 稳定的性格/口头禅/边界',
-          '- 明确目标与禁忌',
-          '- 已达成的关键事实（不可捏造）',
-          '禁止复述细节剧情，禁止编造。中文输出。',
-          '对话：\n'+recent
-        ].join('\n');
-        try{
-          const content = await chatComplete({
-            base: apiBase, key: apiKey, model: modelToUse,
-            temperature: 0.2, maxTokens: 400,
-            system: '你是严谨的对话归纳器，只输出要点列表。',
-            history: [{role:'user',content:prompt}]
-          });
-          setRoleData(d=>({...d, memory: String(content).trim()}));
-          toast('已写入长期记忆');
-        }catch(e){ toast('记忆生成失败：'+(e.message||e)) }
-      }
-
-      return (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="text-sm">
-              {selected ? <>当前：<span className="font-medium">{selected.name}</span></> : '请选择一个角色'}
-            </div>
-            <div className="flex items-center gap-2">
-              <select className="text-xs bg-white/10 border border-white/10 rounded px-2 py-1"
-                      value={selectedId||''} onChange={e=>setSelectedId(e.target.value)}>
-                <option value="" disabled>选择角色</option>
-                {characters.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-              <button className="btn px-2 py-1 rounded text-xs" onClick={()=>setDrawerOpen(true)}>设置</button>
-              <button className="btn px-2 py-1 rounded text-xs" onClick={()=>{
-                const name=prompt('角色昵称'); if(!name) return;
-                const c={id:uid(), name}; setCharacters([...characters,c]); setSelectedId(c.id);
-              }}>＋</button>
-            </div>
-          </div>
-
-          {selected && (
-            <div className="panel rounded-2xl border border-white/10 overflow-hidden">
-              <div className="h-[60vh] flex flex-col">
-                <AutoScrollList items={msgs} render={(m)=><MessageBubble key={m.id} m={m} ui={ui} />} />
-                <div className="sticky bottom-0 border-t border-white/10 bg-black/60 backdrop-blur px-3 py-2">
-                  <Composer onSend={sendText} onImage={sendImage} onSticker={sendSticker}/>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* 抽屉：角色独立设置 */}
-          {selected && drawerOpen && (
-            <SideDrawer onClose={()=>setDrawerOpen(false)} title={`设置 · ${selected.name}`}>
-              <section className="space-y-2">
-                <h4 className="text-sm font-medium">对话形态</h4>
-                <div className="flex gap-2 text-xs">
-                  {['online','offline'].map(v=>(
-                    <label key={v} className={`px-2 py-1 rounded cursor-pointer ${chatMode===v?'bg-white/15':'bg-white/5'}`}>
-                      <input type="radio" className="mr-1" checked={chatMode===v} onChange={()=>setChatMode(v)}/>
-                      {v==='online'?'线上（2–5条短句）':'线下（剧情长文）'}
-                    </label>
-                  ))}
-                </div>
-                {chatMode==='online' && (
-                  <div className="flex items-center gap-2 text-xs">
-                    <span className="opacity-80">每次条数</span>
-                    <input type="number" min="1" max="5" value={burstMin} onChange={e=>setBurstMin(Math.max(1,Math.min(5,+e.target.value||2)))} className="w-14 bg-white/10 border border-white/10 rounded px-1"/>
-                    <span>到</span>
-                    <input type="number" min="1" max="5" value={burstMax} onChange={e=>setBurstMax(Math.max(1,Math.min(5,+e.target.value||4)))} className="w-14 bg-white/10 border border-white/10 rounded px-1"/>
-                  </div>
-                )}
-              </section>
-
-              <Hr/>
-
-              <section className="space-y-2">
-                <h4 className="text-sm font-medium">美化</h4>
-                <Row label="用户气泡"><input type="color" value={ui.user} onChange={e=>setUi({...ui,user:e.target.value})} /></Row>
-                <Row label="角色气泡"><input type="color" value={colorToHex(ui.bot)} onChange={e=>setUi({...ui,bot:e.target.value})} /></Row>
-                <Row label="文字颜色"><input type="color" value={ui.text} onChange={e=>setUi({...ui,text:e.target.value})} /></Row>
-                <Row label="字体栈"><input className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10" value={ui.font} onChange={e=>setUi({...ui,font:e.target.value})} placeholder='Inter, Noto Sans SC, PingFang SC, Microsoft YaHei'/></Row>
-              </section>
-
-              <Hr/>
-
-              <section className="space-y-2">
-                <h4 className="text-sm font-medium">角色数据</h4>
-                <Row label="角色卡">
-                  <UploadJSON onLoad={(obj)=>setRoleData(d=>({...d, roleCard:obj}))}/>
-                </Row>
-                <Row label="世界书">
-                  <UploadJSON onLoad={(obj)=>setRoleData(d=>({...d, worldbook:obj}))}/>
-                </Row>
-                <div className="text-[11px] opacity-70">也可直接粘贴 JSON</div>
-                <textarea className="w-full h-20 bg-black/60 border border-white/10 rounded p-2 text-xs font-mono"
-                          placeholder='粘贴 角色卡 JSON（可空）'
-                          value={roleData.roleCard?JSON.stringify(roleData.roleCard,null,2):''}
-                          onChange={e=>setRoleData(d=>({...d, roleCard: safeParse(e.target.value,null)}))}/>
-                <textarea className="w-full h-20 bg-black/60 border border-white/10 rounded p-2 text-xs font-mono"
-                          placeholder='粘贴 世界书 JSON（可空）'
-                          value={roleData.worldbook?JSON.stringify(roleData.worldbook,null,2):''}
-                          onChange={e=>setRoleData(d=>({...d, worldbook: safeParse(e.target.value,null)}))}/>
-                <Row label="预设"><textarea className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10 min-h-[60px]"
-                          value={roleData.presets||''} onChange={e=>setRoleData(d=>({...d,presets:e.target.value}))}/></Row>
-                <Row label="正则"><textarea className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10 min-h-[60px]"
-                          placeholder="一行一条；形如：s/要替换的/替换后/g"
-                          value={roleData.regex||''} onChange={e=>setRoleData(d=>({...d,regex:e.target.value}))}/></Row>
-                <Row label="温度"><input type="number" step="0.1" min="0" max="2" value={roleData.temperature??0.6}
-                          onChange={e=>setRoleData(d=>({...d,temperature:+e.target.value||0}))} className="w-20 bg-white/10 border border-white/10 rounded px-2 py-1"/></Row>
-                <Row label="模型覆盖"><input className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10" placeholder={`优先于档位：${profile.model||'未设'}`}
-                          value={roleModel} onChange={e=>setRoleModel(e.target.value)}/></Row>
-                <div className="flex gap-2">
-                  <button className="px-3 py-1 rounded bg-[var(--accent)] text-white text-xs" onClick={buildMemory}>从最近对话生成长期记忆</button>
-                  <button className="px-3 py-1 rounded btn text-xs" onClick={()=>{setRoleData(d=>({...d,memory:''})); toast('已清空记忆')}}>清空记忆</button>
-                </div>
-              </section>
-            </SideDrawer>
-          )}
-        </div>
-      );
-    }
-
-    const safeParse=(t,d)=>{try{return JSON.parse(t)}catch{return d}};
-    const Hr=()=> <div className="my-3 h-px bg-white/10"/>;
-
-    function SideDrawer({title,onClose,children}){
-      return (
-        <div className="fixed inset-0 z-50">
-          <div className="absolute inset-0 bg-black/50" onClick={onClose}/>
-          <div className="absolute right-0 top-0 h-full w-[88%] max-w-sm bg-black/90 border-l border-white/10 p-3 overflow-auto">
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-sm font-medium">{title}</div>
-              <button className="btn px-2 py-1 rounded text-xs" onClick={onClose}>关闭</button>
-            </div>
-            {children}
-          </div>
-        </div>
-      );
-    }
-
-    function UploadJSON({onLoad}){
-      return (
-        <label className="text-xs btn px-2 py-1 rounded cursor-pointer inline-flex items-center gap-2">
-          导入JSON
-          <input type="file" accept=".json,application/json" className="hidden"
-                 onChange={async e=>{
-                   const f=e.target.files&&e.target.files[0]; if(!f) return;
-                   try{ const text=await f.text(); const obj=JSON.parse(text); onLoad && onLoad(obj); toast('已加载'); }
-                   catch(err){ toast('解析失败：'+err.message) }
-                 }}/>
-        </label>
-      );
-    }
-
-    function AutoScrollList({items, render}){
-      const ref = useRef(null);
-      useEffect(()=>{ const el=ref.current; if(!el) return;
-        const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
-        if(nearBottom) el.scrollTop = el.scrollHeight;
-      },[items]);
-      return <div ref={ref} className="flex-1 min-h-0 overflow-auto px-3 py-3 space-y-2">{items.map(render)}</div>;
-    }
-
-    function MessageBubble({m,ui}){
-      const baseStyle = { color: ui.text, fontFamily: ui.font || undefined };
-      if(m.type==='image'){
-        return (
-          <div className={`max-w-[85%] rounded-2xl border ${m.role==='user'?'ml-auto':'mr-auto'}`} style={{borderColor:'rgba(255,255,255,.18)'}}>
-            <img src={m.url} className="max-w-[70vw] rounded-2xl" alt="img"/>
-          </div>
-        );
-      }
-      if(m.type==='sticker'){
-        return (
-          <div className={`max-w-[85%] px-3 py-2 rounded-2xl text-lg ${m.role==='user'?'ml-auto':'mr-auto'}`} style={{background:m.role==='user'?ui.user:'transparent',...baseStyle}}>
-            {m.content}
-          </div>
-        );
-      }
-      return (
-        <div className={`max-w-[85%] px-3 py-2 rounded-2xl text-sm leading-snug border bubble ${m.role==='user'?'ml-auto text-white':'mr-auto text-white/90'}`}
-             style={{ background: m.role==='user'?ui.user:'rgba(255,255,255,0.08)', borderColor: m.role==='user'?'rgba(124,92,255,.6)':'rgba(255,255,255,.18)', ...baseStyle }}>
-          {m.content}
-        </div>
-      );
-    }
-
-    function Composer({onSend,onImage,onSticker}){
-      const [v,setV]=useState('');
-      const fileRef = useRef(null);
-      const stickers = ['😏','🥹','🫠','🤌','🥰','🔥','🫶','🙄','😭','😴','🤍','🖤','✨','😮‍💨'];
-      return (
-        <div className="flex items-center gap-2">
-          <button className="btn px-2 py-2 rounded" onClick={()=>fileRef.current?.click()}>🖼️</button>
-          <input type="file" ref={fileRef} accept="image/*" className="hidden" onChange={e=>{const f=e.target.files?.[0]; if(f) onImage&&onImage(f);}}/>
-          <details className="relative">
-            <summary className="btn px-2 py-2 rounded cursor-pointer select-none">🙂</summary>
-            <div className="absolute bottom-10 left-0 grid grid-cols-7 gap-1 p-2 rounded-xl bg-black/90 border border-white/10">
-              {stickers.map(s=> <button key={s} className="px-2 py-1 hover:bg-white/10 rounded" onClick={()=>onSticker&&onSticker(s)}>{s}</button>)}
-            </div>
-          </details>
-          <input className="flex-1 bg-white/10 rounded-xl px-3 py-2 text-sm border border-white/10 focus:outline-none"
-                 placeholder="说点什么…" value={v} onChange={e=>setV(e.target.value)}
-                 onKeyDown={e=>{ if(e.key==='Enter' && !e.shiftKey){ onSend(v); setV(''); }}}/>
-          <button className="px-3 py-2 rounded-xl bg-[var(--accent)] text-white text-sm" onClick={()=>{onSend(v); setV('')}}>发送</button>
-        </div>
-      );
-    }
-
-    /* ------------- XHS (小红书) ------------- */
-    function XHSPage(){
-      const [url,setUrl]=useState('https://www.xiaohongshu.com/explore');
-      const [embedOk,setEmbedOk]=useState(true);
-      return (
-        <div className="space-y-3">
-          <Header title="小红书" />
-          <div className="panel rounded-2xl p-3 space-y-2">
-            <div className="text-xs opacity-80">提示：若站点不允许内嵌，会自动在新窗口打开。</div>
-            <div className="flex gap-2">
-              <input className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10 text-sm" value={url} onChange={e=>setUrl(e.target.value)}/>
-              <button className="btn px-3 py-1.5 rounded text-sm" onClick={()=>{
-                try{
-                  const f=document.getElementById('xhs_iframe');
-                  if(f) f.src=url;
-                  setEmbedOk(true);
-                  setTimeout(()=>{ 
-                    if(!f || !f.contentWindow){ window.open(url,'_blank'); setEmbedOk(false); }
-                  },1200);
-                }catch{ window.open(url,'_blank'); setEmbedOk(false); }
-              }}>打开</button>
-            </div>
-            {embedOk
-              ? <iframe id="xhs_iframe" title="xhs" src={url} className="w-full h-[64vh] rounded-xl border border-white/10"></iframe>
-              : <div className="text-xs opacity-80">已在新窗口打开。</div>}
-          </div>
-        </div>
-      );
-    }
-
-    /* ------------- Music ------------- */
-    function MusicPage(){
-      const [embed,setEmbed]=useState('<iframe frameborder="0" border="0" marginwidth="0" marginheight="0" width="100%" height="380" src=""></iframe>');
-      const [audioUrl,setAudioUrl]=useState('');
-      return (
-        <div className="space-y-3">
-          <Header title="音乐"/>
-          <div className="panel rounded-2xl p-3 space-y-2">
-            <div className="text-sm font-medium">方式一：粘贴官方 iframe（QQ音乐/网易云支持）</div>
-            <textarea className="w-full min-h-[100px] bg-black/60 border border-white/10 rounded p-2 text-xs font-mono"
-                      placeholder='粘贴官方播放器 iframe 代码'
-                      value={embed} onChange={e=>setEmbed(e.target.value)} />
-            <div className="rounded-xl border border-white/10 p-2" dangerouslySetInnerHTML={{__html:embed}}/>
-            <div className="text-sm font-medium mt-3">方式二：直链音频</div>
-            <div className="flex gap-2">
-              <input className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10 text-sm" placeholder="https://..." value={audioUrl} onChange={e=>setAudioUrl(e.target.value)}/>
-              <audio controls src={audioUrl||undefined} className="flex-1"/>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    /* ------------- Moments/Weibo ------------- */
-    function MomentsPage({profile}){
-      const [posts,setPosts]=useState(()=>loadJSON('mp_moments',[]));
-      useEffect(()=>saveJSON('mp_moments',posts),[posts]);
-
-      const [text,setText]=useState('');
-      const [img,setImg]=useState(null);
-      const fileRef = useRef(null);
-
-      async function aiPost(seed){
-        const base=(profile.apiBase||'').replace(/\/$/,''); if(!profile.apiKey||!profile.model) return toast('API 档位未设完整');
-        const headers={'Content-Type':'application/json','Authorization':'Bearer '+profile.apiKey};
-        const sys='你是社交平台文案助手，写 40-120 字中文贴文，口语自然，拒绝营销腔。';
-        const prompt='根据关键词写一条朋友圈内容，避免鸡汤：\n关键词：'+seed;
-        const r = await fetch(base + '/chat/completions',{method:'POST',headers,body:JSON.stringify({model:profile.model,temperature:0.7,max_tokens:220,messages:[{role:'system',content:sys},{role:'user',content:prompt}]})});
-        if(!r.ok){ toast('AI 发帖失败'); return; }
-        const d=await r.json(); const c=d?.choices?.[0]?.message?.content||'';
-        setPosts([{id:uid(), text:c, time:Date.now()}, ...posts]);
-      }
-
-      async function aiComment(post){
-        const base=(profile.apiBase||'').replace(/\/$/,''); if(!profile.apiKey||!profile.model) return toast('API 档位未设完整');
-        const headers={'Content-Type':'application/json','Authorization':'Bearer '+profile.apiKey};
-        const sys='你是社交平台评论助手，写 10-40 字中文评论，不奉承，不阴阳怪气。';
-        const prompt='针对这条内容写评论：\n'+post.text;
-        const r = await fetch(base + '/chat/completions',{method:'POST',headers,body:JSON.stringify({model:profile.model,temperature:0.7,max_tokens:120,messages:[{role:'system',content:sys},{role:'user',content:prompt}]})});
-        if(!r.ok){ toast('AI 评论失败'); return; }
-        const d=await r.json(); const c=d?.choices?.[0]?.message?.content||'';
-        setPosts(ps=>ps.map(p=> p.id===post.id ? {...p, comments:[...(p.comments||[]), {id:uid(), text:c}]} : p ));
-      }
-
-      return (
-        <div className="space-y-3">
-          <Header title="朋友圈 / 微博"/>
-          <div className="panel rounded-2xl p-3 space-y-2">
-            <div className="flex gap-2">
-              <input className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10 text-sm" placeholder="此刻想说点什么…" value={text} onChange={e=>setText(e.target.value)}/>
-              <button className="btn px-3 py-1.5 rounded" onClick={()=>fileRef.current?.click()}>🖼️</button>
-              <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e=>{
-                const f=e.target.files?.[0]; if(!f) return;
-                const r=new FileReader(); r.onload=()=>setImg(r.result); r.readAsDataURL(f);
-              }}/>
-              <button className="px-3 py-1.5 rounded bg-[var(--accent)] text-white" onClick={()=>{
-                if(!text && !img) return;
-                setPosts([{id:uid(), text, img, time:Date.now()}, ...posts]); setText(''); setImg(null);
-              }}>发布</button>
-              <button className="btn px-3 py-1.5 rounded" onClick={()=>aiPost('今天的心情与最近的小目标')}>由 AI 发布</button>
-            </div>
-            {img && <img src={img} className="max-h-32 rounded mt-2" alt="preview"/>}
-          </div>
-
-          <div className="space-y-3 max-h-[58vh] overflow-auto">
-            {posts.map(p=>(
-              <div key={p.id} className="panel rounded-2xl p-3">
-                <div className="text-xs opacity-70">{new Date(p.time).toLocaleString()}</div>
-                <div className="mt-1 text-sm leading-snug whitespace-pre-wrap">{p.text}</div>
-                {p.img && <img src={p.img} className="rounded mt-2" alt="img"/>}
-                <div className="mt-2">
-                  <button className="btn px-2 py-1 rounded text-xs" onClick={()=>aiComment(p)}>AI 评论</button>
-                </div>
-                {(p.comments||[]).length>0 && (
-                  <div className="mt-2 space-y-1">
-                    {p.comments.map(c=> <div key={c.id} className="text-xs bg-white/5 border border-white/10 rounded px-2 py-1">{c.text}</div>)}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      );
-    }
-
-    /* ------------- Settings ------------- */
-    function SettingsPage({theme,setTheme,apiProfiles,setApiProfiles,activeProfileId,setActiveProfileId}){
-      const [tab,setTab]=useState('api');
-      const [tTheme,setTTheme]=useState(theme);
-      useEffect(()=>setTheme(tTheme),[tTheme,setTheme]);
-
-      return (
-        <div className="space-y-3">
-          <Header title="设置"/>
-          <div className="flex gap-1">
-            <TabButton active={tab==='api'} onClick={()=>setTab('api')}>API 档位</TabButton>
-            <TabButton active={tab==='beauty'} onClick={()=>setTab('beauty')}>全局美化</TabButton>
-            <TabButton active={tab==='bg'} onClick={()=>setTab('bg')}>手机背景</TabButton>
-          </div>
-
-          {tab==='api' && (
-            <div className="rounded-xl border border-white/10 p-3 bg-white/5 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="text-sm">档位（{apiProfiles.length}）</div>
-                <button className="btn px-2 py-1 rounded text-xs" onClick={()=>{
-                  const p={id:uid(), name:'新档位', apiBase:'', apiKey:'', model:'', temperature:0.6};
-                  setApiProfiles([...apiProfiles, p]); setActiveProfileId(p.id);
-                }}>＋ 新建档位</button>
-              </div>
-              <div className="space-y-2">
-                {apiProfiles.map(p=>(
-                  <div key={p.id} className={`p-2 rounded border ${activeProfileId===p.id?'border-[var(--accent)]/60 bg-white/10':'border-white/10 bg-white/5'}`}>
-                    <div className="flex items-center justify-between">
-                      <input className="text-sm bg-transparent outline-none" value={p.name} onChange={e=>setApiProfiles(ps=>ps.map(x=>x.id===p.id?{...x,name:e.target.value}:x))}/>
-                      <div className="flex items-center gap-2">
-                        <label className="text-[11px] flex items-center gap-1"><input type="radio" checked={activeProfileId===p.id} onChange={()=>setActiveProfileId(p.id)}/> 使用</label>
-                        <button className="btn px-2 py-1 rounded text-xs" onClick={()=>setApiProfiles(ps=>ps.filter(x=>x.id!==p.id))}>删除</button>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-1 gap-2 mt-2 text-xs">
-                      <Row label="API Base"><input className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10" value={p.apiBase} onChange={e=>setApiProfiles(ps=>ps.map(x=>x.id===p.id?{...x,apiBase:e.target.value}:x))}/></Row>
-                      <Row label="API Key"><input type="password" className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10" value={p.apiKey} onChange={e=>setApiProfiles(ps=>ps.map(x=>x.id===p.id?{...x,apiKey:e.target.value}:x))}/></Row>
-                      <Row label="模型"><input className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10" value={p.model} onChange={e=>setApiProfiles(ps=>ps.map(x=>x.id===p.id?{...x,model:e.target.value}:x))}/></Row>
-                      <Row label="温度"><input type="number" step="0.1" min="0" max="2" className="w-20 bg白/10 rounded px-2 py-1 border border-white/10" value={p.temperature} onChange={e=>setApiProfiles(ps=>ps.map(x=>x.id===p.id?{...x,temperature:+e.target.value||0}:x))}/></Row>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {tab==='beauty' && (
-            <div className="rounded-xl border border-white/10 p-3 bg-white/5 space-y-3">
-              <Row label="主题色"><input type="color" value={tTheme.accent} onChange={e=>setTTheme({...tTheme,accent:e.target.value})} className="w-8 h-8 rounded"/></Row>
-              <Row label="模糊"><input type="range" min="0" max="20" value={tTheme.blur} onChange={e=>setTTheme({...tTheme,blur:+e.target.value})}/> <span className="text-xs opacity-90 w-8 text-right">{tTheme.blur}</span></Row>
-              <Row label="字体栈"><input className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10" value={tTheme.font} onChange={e=>setTTheme({...tTheme,font:e.target.value})}/></Row>
-            </div>
-          )}
-
-          {tab==='bg' && (
-            <div className="rounded-xl border border-white/10 p-3 bg-white/5 space-y-3">
-              <Row label="类型">
-                <select value={theme.bgType} onChange={e=>setTheme({...theme,bgType:e.target.value})} className="text-xs bg-white/10 px-2 py-1 rounded border border-white/10">
-                  <option value="color">纯色背景</option>
-                  <option value="image">图片背景</option>
+    return (
+      <div className="phone-wrap w-full">
+        <div className="relative w-full h-full rounded-[32px] border border-white/15 shadow-2xl overflow-hidden bg-black/80 text-white"
+             style={{fontFamily:theme.font, backgroundImage: theme.bgType==='image' && theme.bgImage ? `url(${theme.bgImage})` : 'none', backgroundSize:'cover', backgroundPosition:'center'}}>
+          <div className="absolute inset-0" style={{backdropFilter:`blur(${theme.blur}px)`}}/>
+          <div className="absolute left-1/2 -translate-x-1/2 top-2 w-40 h-4 rounded-full bg-black/60 border border-white/10" />
+          <div className="absolute inset-0 flex flex-col">
+            {/* 顶部状态 + 档位切换 */}
+            <div className="p-3 flex items-center justify-between">
+              <div className="text-xs text-white/80">{new Date().toTimeString().slice(0,5)}</div>
+              <div className="flex items-center gap-2">
+                <select className="text-[11px] bg-black/50 border border-white/10 rounded px-2 py-1"
+                        value={profile?.id||''}
+                        onChange={e=>setActiveProfileId(e.target.value)}>
+                  {apiProfiles.map(p=><option key={p.id} value={p.id}>{p.name} · {p.model||'未设模型'}</option>)}
                 </select>
-              </Row>
-              {theme.bgType==='color' ? (
-                <Row label="颜色"><input type="color" value={theme.bgColor} onChange={e=>setTheme({...theme,bgColor:e.target.value})} className="w-8 h-8 rounded"/></Row>
-              ) : (
-                <Row label="图片">
-                  <label className="text-xs btn px-2 py-1 rounded cursor-pointer">上传图片
-                    <input type="file" accept="image/*" className="hidden" onChange={e=>{
-                      const f=e.target.files&&e.target.files[0]; if(!f) return;
-                      const r=new FileReader(); r.onload=()=>setTheme({...theme,bgImage:r.result}); r.readAsDataURL(f);
-                    }}/>
-                  </label>
-                  {theme.bgImage && <button onClick={()=>setTheme({...theme,bgImage:''})} className="ml-2 text-xs px-2 py-1 rounded btn">清除</button>}
-                </Row>
-              )}
+                <button className="text-xs px-2 py-1 rounded btn" onClick={()=>setScreen('beauty')}>🎨</button>
+              </div>
             </div>
-          )}
-        </div>
-      );
-    }
 
-    const Header=({title})=>(
-      <div className="flex items-center justify-center">
-        <div className="px-4 py-1.5 rounded-2xl bg-black/50 border border-white/10">{title}</div>
+            {/* 内容 */}
+            <div className="flex-1 overflow-auto px-4 pb-4 space-y-3">
+              {screen==='home' && <HomePage goto={setScreen} weather={weather} setWeather={setWeather}/>}
+              {screen==='chat' && <ChatPage characters={characters} setCharacters={setCharacters} profile={profile}/>}
+              {screen==='api' && <APIPage profiles={apiProfiles} setProfiles={setApiProfiles} activeId={activeProfileId} setActiveId={setActiveProfileId}/>}
+              {screen==='moments' && <MomentsPage profile={profile}/>}
+              {screen==='xhs' && <XHSPage/>}
+              {screen==='gallery' && <Placeholder title="相册"/>}
+              {screen==='beauty' && <BeautyPage theme={theme} setTheme={setTheme}/>}
+              {screen==='music' && <MusicPage/>}
+              {screen==='contacts' && <ContactsPage/>}
+            </div>
+
+            {/* Dock */}
+            <div className="px-4 pb-5">
+              <div className="panel rounded-2xl p-3 grid grid-cols-3 gap-2">
+                <DockBtn label="小红书" onClick={()=>setScreen('xhs')}>📕</DockBtn>
+                <DockBtn label="朋友圈" onClick={()=>setScreen('moments')}>🫶</DockBtn>
+                <DockBtn label="设置" onClick={()=>setScreen('beauty')}>⚙️</DockBtn>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     );
-    const Row=({label,children})=>(<div className="flex items-center gap-3"><div className="w-24 shrink-0 text-xs opacity-90">{label}</div><div className="flex-1 flex items-center flex-wrap gap-2">{children}</div></div>);
-    const TabButton=({active,onClick,children})=>(<button onClick={onClick} className={`px-3 py-1.5 rounded-lg border text-xs ${active?'bg-white/15 border-white/20':'bg-white/5 border-white/10 hover:bg-white/10'}`}>{children}</button>);
+  }
 
-    ReactDOM.createRoot(document.getElementById('app')).render(<App/>);
+  const DockBtn=({children,label,onClick})=>(
+    <button onClick={onClick} className="flex flex-col items-center gap-1">
+      <div className="w-12 h-12 rounded-2xl panel grid place-items-center text-xl">{children}</div>
+      <div className="text-xs opacity-90">{label}</div>
+    </button>
+  );
+
+  /* ========== 首页 ========== */
+  function HomePage({goto,weather,setWeather}){
+    return (
+      <div className="space-y-3">
+        {/* 顶部大卡：联系人 | 播放器 | 天气 */}
+        <div className="grid grid-cols-[72px,1fr,92px] gap-3">
+          <button onClick={()=>goto('contacts')} className="panel rounded-2xl h-28 grid place-items-center text-sm">
+            <div className="text-2xl">👥</div><div className="text-xs opacity-80 mt-1">联系人</div>
+          </button>
+
+          <div className="panel rounded-2xl p-4 h-28 relative overflow-hidden">
+            <div className="absolute right-3 top-3 text-[10px] opacity-70">API {localStorage.getItem('mp_active_profile')?'ON':'OFF'}</div>
+            <div className="flex items-center gap-3">
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-black/20 to-black/70 grid place-items-center">
+                <div className="w-3 h-3 bg-white/90 rounded-full"></div>
+              </div>
+              <div className="flex-1">
+                <div className="text-base font-semibold truncate">Sleepy Cat</div>
+                <div className="text-xs opacity-80 truncate">anemoia / crossing you</div>
+                <div className="mt-2 flex gap-2">
+                  <button onClick={()=>goto('music')} className="px-3 py-1.5 rounded bg-[var(--accent)] text-white text-xs">打开播放器</button>
+                  <button className="px-3 py-1.5 rounded bg-white/10 border border-white/10 text-xs">当前</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <button onClick={()=>{
+            const city = prompt('城市名', weather.city)||weather.city;
+            const temp = prompt('温度', weather.temp)||weather.temp;
+            const icon = prompt('图标(如 ☀️/⛅/🌧️)', weather.icon)||weather.icon;
+            setWeather({city,temp,icon});
+          }} className="panel rounded-2xl h-28 p-3 text-left">
+            <div className="text-xs opacity-70">天气</div>
+            <div className="mt-4 text-2xl">{weather.icon}</div>
+            <div className="text-sm mt-1">{weather.city} · {weather.temp}</div>
+          </button>
+        </div>
+
+        {/* 六宫格 */}
+        <div className="grid grid-cols-3 gap-6 pt-2">
+          <IconBtn label="小红书" onClick={()=>goto('xhs')}>📕</IconBtn>
+          <IconBtn label="朋友圈" onClick={()=>goto('moments')}>🫶</IconBtn>
+          <IconBtn label="设置" onClick={()=>goto('beauty')}>⚙️</IconBtn>
+          <IconBtn label="相册" onClick={()=>goto('gallery')}>🖼️</IconBtn>
+          <IconBtn label="美化" onClick={()=>goto('beauty')}>🎨</IconBtn>
+          <IconBtn label="API" onClick={()=>goto('api')}>🔗</IconBtn>
+        </div>
+      </div>
+    );
+  }
+  const IconBtn=({children,label,onClick})=>(
+    <button onClick={onClick} className="flex flex-col items-center gap-2">
+      <div className="w-16 h-16 rounded-2xl panel grid place-items-center text-2xl">{children}</div>
+      <div className="text-xs opacity-90">{label}</div>
+    </button>
+  );
+
+  /* ========== API 管理 ========== */
+  function APIPage({profiles,setProfiles,activeId,setActiveId}){
+    const [showNew,setShowNew]=useState(false);
+    const [temp,setTemp]=useState({name:'新档位', apiBase:'', apiKey:'', model:'', temperature:0.6});
+
+    async function testAPI(p){
+      try{
+        const r=await fetch((p.apiBase||'').replace(/\/$/,'')+'/models',{headers:{'Authorization':'Bearer '+(p.apiKey||'')}});
+        if(!r.ok) throw new Error('HTTP '+r.status);
+        toast('API 可用 ✅');
+      }catch(e){ toast('测试失败：'+(e.message||e)) }
+    }
+    async function fetchModels(p, onDone){
+      try{
+        const r=await fetch((p.apiBase||'').replace(/\/$/,'')+'/models',{headers:{'Authorization':'Bearer '+(p.apiKey||'')}});
+        if(!r.ok) throw new Error('HTTP '+r.status);
+        const d=await r.json(); const list=(d?.data||d?.models||[]).map(x=>x.id||x.name).filter(Boolean);
+        onDone && onDone(list);
+      }catch(e){ toast('获取失败：'+(e.message||e)) }
+    }
+
+    return (
+      <div className="space-y-3">
+        <Header title="API 管理">
+          <button className="btn px-2 py-1 rounded text-xs" onClick={()=>setShowNew(true)}>＋</button>
+        </Header>
+
+        <div className="space-y-2">
+          {profiles.map(p=>(
+            <div key={p.id} className={`p-3 rounded-xl border ${activeId===p.id?'border-[var(--accent)]/70 bg-white/10':'border-white/10 bg-white/5'}`}>
+              <div className="flex items-center justify-between gap-2">
+                <input className="text-sm bg-transparent outline-none" value={p.name} onChange={e=>setProfiles(ps=>ps.map(x=>x.id===p.id?{...x,name:e.target.value}:x))}/>
+                <div className="flex items-center gap-2">
+                  <label className="text-[11px] flex items-center gap-1"><input type="radio" checked={activeId===p.id} onChange={()=>setActiveId(p.id)}/> 使用</label>
+                  <button className="btn px-2 py-1 rounded text-xs" onClick={()=>setProfiles(ps=>ps.filter(x=>x.id!==p.id))}>删</button>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-2 mt-2 text-xs">
+                <Row label="API Base"><input className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10" value={p.apiBase} onChange={e=>setProfiles(ps=>ps.map(x=>x.id===p.id?{...x,apiBase:e.target.value}:x))}/></Row>
+                <Row label="API Key"><input type="password" className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10" value={p.apiKey} onChange={e=>setProfiles(ps=>ps.map(x=>x.id===p.id?{...x,apiKey:e.target.value}:x))}/></Row>
+                <Row label="模型">
+                  <input className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10" value={p.model} onChange={e=>setProfiles(ps=>ps.map(x=>x.id===p.id?{...x,model:e.target.value}:x))}/>
+                  <button className="btn px-2 py-1 rounded" onClick={()=>fetchModels(p, list=>{
+                    const m=prompt('选择模型（手输或复制）', list.join(', '))||p.model;
+                    setProfiles(ps=>ps.map(x=>x.id===p.id?{...x,model:m}:x));
+                  })}>取模型</button>
+                  <button className="btn px-2 py-1 rounded" onClick={()=>testAPI(p)}>测试</button>
+                </Row>
+                <Row label="温度"><input type="number" step="0.1" min="0" max="2" className="w-20 bg-white/10 rounded px-2 py-1 border border-white/10" value={p.temperature} onChange={e=>setProfiles(ps=>ps.map(x=>x.id===p.id?{...x,temperature:+e.target.value||0}:x))}/></Row>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {showNew && (
+          <Modal title="新增 API 档位" onClose={()=>setShowNew(false)}>
+            <div className="space-y-2 text-sm">
+              <Row label="名称"><input className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10" value={temp.name} onChange={e=>setTemp({...temp,name:e.target.value})}/></Row>
+              <Row label="API Base"><input className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10" value={temp.apiBase} onChange={e=>setTemp({...temp,apiBase:e.target.value})}/></Row>
+              <Row label="API Key"><input type="password" className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10" value={temp.apiKey} onChange={e=>setTemp({...temp,apiKey:e.target.value})}/></Row>
+              <Row label="模型"><input className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10" value={temp.model} onChange={e=>setTemp({...temp,model:e.target.value})}/></Row>
+              <Row label="温度"><input type="number" step="0.1" min="0" max="2" className="w-20 bg-white/10 rounded px-2 py-1 border border-white/10" value={temp.temperature} onChange={e=>setTemp({...temp,temperature:+e.target.value||0})}/></Row>
+              <div className="flex justify-end gap-2 mt-2">
+                <button className="btn px-3 py-1.5 rounded" onClick={()=>setShowNew(false)}>取消</button>
+                <button className="px-3 py-1.5 rounded bg-[var(--accent)] text-white" onClick={()=>{
+                  const p={...temp, id:uid()}; setProfiles(ps=>[...ps,p]); setShowNew(false);
+                }}>保存</button>
+              </div>
+            </div>
+          </Modal>
+        )}
+      </div>
+    );
+  }
+
+  /* ========== 聊天（微信式） ========== */
+  function ChatPage({characters,setCharacters,profile}){
+    const [selectedId,setSelectedId]=useState(()=>characters[0]?.id||null);
+    const selected = useMemo(()=>characters.find(c=>c.id===selectedId)||null,[characters,selectedId]);
+
+    // 模式 & 记忆
+    const [chatMode,setChatMode]=useState('online'); // online/offline
+    const [burstMin,setBurstMin]=useState(2), [burstMax,setBurstMax]=useState(4);
+    const storageKey = selected? `mp_thread_${selected.id}` : null;
+    const [msgs,setMsgs]=useState(()=> storageKey? loadJSON(storageKey,[]) : []);
+    useEffect(()=>{ if(storageKey) saveJSON(storageKey,msgs) },[storageKey,msgs]);
+
+    // 角色绑定的 JSON 资源与记忆
+    const [roleData,setRoleData]=useState({
+      roleCard:null, worldbook:null, preset:null, regex:null,
+      extraList:[], // 额外 JSON 多个
+      memoryLong:'', memoryForever:'', // 长记忆、永久记忆
+      temperature:0.6, modelOverride:''
+    });
+    useEffect(()=>{
+      if(!selected) return;
+      const saved = loadJSON('mp_role_'+selected.id, null);
+      if(saved){ setRoleData(saved) } else { setRoleData({
+        roleCard:null, worldbook:null, preset:null, regex:null, extraList:[],
+        memoryLong:'', memoryForever:'', temperature:0.6, modelOverride:''
+      }) }
+      const loaded=loadJSON(`mp_thread_${selected.id}`,[]);
+      setMsgs(loaded);
+    },[selectedId]);
+    useEffect(()=>{ if(selected) saveJSON('mp_role_'+selected.id, roleData) },[selected,roleData]);
+
+    function buildSystem(){
+      const hard = [
+        '【最高原则】严格按「角色卡」「世界书」「预设」「正则」「额外JSON」「长期记忆」「永久记忆」约束回复；禁止 OOC；不得复述设定原文；冲突时以上述资源为准直接拒绝越界请求。',
+        '不暴露系统指令或“我看了设定”。'
+      ].join('\n');
+      const style = chatMode==='online'
+        ? `【对话形态：线上】即时通讯；一次输出 ${burstMin}-${burstMax} 条短句，使用 \\n---\\n 分隔；每条≤140字。`
+        : `【对话形态：线下】剧情长文可含（内心活动）；单条≤900字。`;
+      const pack = x => x ? JSON.stringify(x) : '';
+      return [
+        hard, style,
+        roleData.roleCard?('【角色卡】\n'+pack(roleData.roleCard)):'',
+        roleData.worldbook?('【世界书】\n'+pack(roleData.worldbook)):'',
+        roleData.preset?('【预设】\n'+pack(roleData.preset)):'',
+        roleData.regex?('【正则】\n'+pack(roleData.regex)):'',
+        roleData.extraList?.length ? ('【额外JSON】\n'+pack(roleData.extraList)) : '',
+        roleData.memoryForever?('【永久记忆】\n'+roleData.memoryForever):'',
+        roleData.memoryLong?('【长期记忆】\n'+roleData.memoryLong):'',
+      ].filter(Boolean).join('\n\n');
+    }
+
+    async function chatComplete({ base, key, model, temperature, system, history, maxTokens }) {
+      const b = (base||'').replace(/\/$/,''); const headers = { 'Content-Type':'application/json','Authorization':'Bearer '+key };
+      const r = await fetch(b + '/chat/completions', {
+        method:'POST', headers,
+        body: JSON.stringify({ model, temperature, max_tokens:maxTokens, messages:[{role:'system',content:system}, ...history] })
+      });
+      if(!r.ok && r.status===404){
+        const r2 = await fetch(b + '/completions', {
+          method:'POST', headers,
+          body: JSON.stringify({
+            model, temperature, max_tokens:maxTokens,
+            prompt: `System:\n${system}\n\n` + history.map(m => `${m.role==='user'?'User':'Assistant'}: ${m.content}`).join('\n') + '\nAssistant:'
+          })
+        });
+        if(!r2.ok) throw new Error('HTTP '+r2.status);
+        const d2 = await r2.json(); return d2?.choices?.[0]?.text ?? '[empty]';
+      }
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      const d = await r.json(); return d?.choices?.[0]?.message?.content ?? '[empty]';
+    }
+
+    async function sendText(text){
+      if(!text?.trim()) return;
+      const history=[...msgs,{id:uid(),role:'user',content:text}];
+      setMsgs(history);
+      const apiBase=profile?.apiBase, apiKey=profile?.apiKey, model=roleData.modelOverride || profile?.model;
+      if(!apiBase||!apiKey||!model){ toast('API 不完整'); return; }
+      const maxChars = chatMode==='online'?140:900;
+      const approxTokens = Math.max(64, Math.min(1024, Math.round(maxChars*1.8)));
+      const system=buildSystem();
+      try{
+        let out = await chatComplete({
+          base:apiBase, key:apiKey, model, temperature:Number.isFinite(+roleData.temperature)?+roleData.temperature:(+profile.temperature||0.6),
+          system, history: history.map(({role,content})=>({role,content})), maxTokens: approxTokens
+        });
+        // 线上拆条
+        if(chatMode==='online'){
+          const parts = String(out).split(/\n---\n/).map(s=>s.trim()).filter(Boolean);
+          const n=Math.max(burstMin, Math.min(burstMax, parts.length||burstMin));
+          setMsgs(m=>{const t=[...m]; for(let i=0;i<n;i++) t.push({id:uid(),role:'assistant',content:parts[i]||''}); return t;});
+        }else{
+          setMsgs(m=>[...m,{id:uid(),role:'assistant',content:String(out).trim()}]);
+        }
+      }catch(e){ toast('请求失败：'+(e.message||e)) }
+    }
+
+    // 记忆生成
+    async function genLongMemory(){
+      const apiBase=profile?.apiBase, apiKey=profile?.apiKey, model=roleData.modelOverride || profile?.model;
+      if(!apiBase||!apiKey||!model){ toast('API 不完整'); return; }
+      const recent = msgs.slice(-40).map(m=>`${m.role==='user'?'用户':'角色'}:${m.content||'[媒体]'}`).join('\n');
+      const sys='只输出 3-8 条要点，涵盖稳定关系/性格/边界/目标与禁忌/已确认事实。避免剧情复述。中文。';
+      const prompt='从以下对话生成“长期记忆要点”列表：\n'+recent;
+      try{
+        const out = await chatComplete({
+          base:apiBase,key:apiKey,model,temperature:0.2,maxTokens:400,
+          system:sys, history:[{role:'user',content:prompt}]
+        });
+        setRoleData(d=>({...d, memoryLong:String(out).trim()}));
+        toast('已写入长期记忆');
+      }catch(e){ toast('生成失败：'+(e.message||e)) }
+    }
+
+    return (
+      <div className="space-y-3">
+        <Header title="聊天">
+          <div className="flex items-center gap-2">
+            <select className="text-xs bg-white/10 border border-white/10 rounded px-2 py-1"
+                    value={selectedId||''} onChange={e=>setSelectedId(e.target.value)}>
+              <option value="" disabled>选择角色</option>
+              {characters.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <button className="btn px-2 py-1 rounded text-xs" onClick={()=>{
+              const name=prompt('角色昵称'); if(!name) return;
+              const c={id:uid(), name}; setCharacters([...characters,c]); setSelectedId(c.id);
+            }}>＋</button>
+            {selected && <RoleConfig roleData={roleData} setRoleData={setRoleData}/>}
+          </div>
+        </Header>
+
+        {selected ? (
+          <div className="panel rounded-2xl border border-white/10 overflow-hidden">
+            <div className="h-[60vh] flex flex-col">
+              <ChatList items={msgs}/>
+              <div className="sticky bottom-0 border-t border-white/10 bg-black/60 backdrop-blur px-3 py-2">
+                <Composer onSend={sendText}/>
+                {/* 模式开关 */}
+                <div className="mt-2 flex items-center gap-3 text-[11px] opacity-80">
+                  <label><input type="radio" checked={chatMode==='online'} onChange={()=>setChatMode('online')}/> 线上</label>
+                  <label><input type="radio" checked={chatMode==='offline'} onChange={()=>setChatMode('offline')}/> 线下</label>
+                  {chatMode==='online' && (
+                    <>
+                      <span>每次</span>
+                      <input className="w-10 bg-white/10 border border-white/10 rounded px-1" type="number" min="1" max="5" value={burstMin} onChange={e=>setBurstMin(+e.target.value||2)}/>
+                      <span>到</span>
+                      <input className="w-10 bg-white/10 border border-white/10 rounded px-1" type="number" min="1" max="5" value={burstMax} onChange={e=>setBurstMax(+e.target.value||4)}/>
+                    </>
+                  )}
+                  <button className="btn px-2 py-1 rounded ml-auto" onClick={genLongMemory}>生成长期记忆</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="panel rounded-2xl p-6 text-sm">先创建一个角色吧。</div>
+        )}
+      </div>
+    );
+  }
+
+  function ChatList({items}){
+    const ref=useRef(null);
+    useEffect(()=>{ const el=ref.current; if(!el) return;
+      const nearBottom=el.scrollHeight-el.scrollTop-el.clientHeight<120; if(nearBottom) el.scrollTop=el.scrollHeight;
+    },[items]);
+    return (
+      <div ref={ref} className="flex-1 min-h-0 overflow-auto px-3 py-3 space-y-3">
+        {items.map(m=>(
+          <div key={m.id} className={`flex ${m.role==='user'?'justify-end':'justify-start'}`}>
+            {m.role!=='user' && <div className="w-7 h-7 rounded-full bg-white/20 mr-2 overflow-hidden"><div className="w-full h-full grid place-items-center">🤖</div></div>}
+            <div className={`max-w-[76%] px-3 py-2 rounded-2xl text-sm leading-snug border bubble ${m.role==='user'?'bg-[var(--accent)] text-white':'bg-white/90 text-black/90'}`} style={{borderColor: m.role==='user'?'rgba(124,92,255,.6)':'#e5e7eb'}}>
+              {m.content}
+            </div>
+            {m.role==='user' && <div className="w-7 h-7 rounded-full bg-white/20 ml-2 overflow-hidden"><div className="w-full h-full grid place-items-center">👤</div></div>}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  function Composer({onSend}){
+    const [v,setV]=useState('');
+    return (
+      <div className="flex items-center gap-2">
+        <button className="btn px-2 py-2 rounded">📷</button>
+        <button className="btn px-2 py-2 rounded">🖼️</button>
+        <button className="btn px-2 py-2 rounded">🙂</button>
+        <button className="btn px-2 py-2 rounded">¥</button>
+        <button className="btn px-2 py-2 rounded">🎤</button>
+        <button className="btn px-2 py-2 rounded">☎️</button>
+        <button className="btn px-2 py-2 rounded">📎</button>
+        <button className="btn px-2 py-2 rounded">📍</button>
+        <input className="flex-1 bg-white/95 text-black rounded-xl px-3 py-2 text-sm border border-white/60 focus:outline-none"
+               placeholder="输入消息…" value={v} onChange={e=>setV(e.target.value)}
+               onKeyDown={e=>{ if(e.key==='Enter' && !e.shiftKey){ onSend(v); setV(''); }}}/>
+        <button className="px-3 py-2 rounded-xl bg-[var(--accent)] text-white text-sm" onClick={()=>{onSend(v); setV('')}}>发送</button>
+      </div>
+    );
+  }
+
+  function RoleConfig({roleData,setRoleData}){
+    const [open,setOpen]=useState(false);
+    return (
+      <>
+        <button className="btn px-2 py-1 rounded text-xs" onClick={()=>setOpen(true)}>角色设置</button>
+        {open && (
+          <Modal title="角色设置" onClose={()=>setOpen(false)}>
+            <div className="space-y-3 text-sm">
+              {/* JSON 入口：角色卡/世界书/预设/正则 */}
+              {[
+                ['角色卡','roleCard'],
+                ['世界书','worldbook'],
+                ['预设(JSON)','preset'],
+                ['正则(JSON)','regex'],
+              ].map(([label,key])=>(
+                <Row key={key} label={label}>
+                  <UploadJSON onLoad={obj=>setRoleData(d=>({...d,[key]:obj}))}/>
+                  <textarea className="flex-1 bg-black/50 rounded px-2 py-1 border border-white/10 min-h-[60px] font-mono text-xs"
+                            placeholder={'粘贴 '+label+' JSON'} value={roleData[key]?JSON.stringify(roleData[key],null,2):''}
+                            onChange={e=>{try{setRoleData(d=>({...d,[key]:JSON.parse(e.target.value)}))}catch{}}}/>
+                </Row>
+              ))}
+
+              {/* 额外 JSON 列表 */}
+              <div className="rounded-lg border border-white/10 p-2">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs opacity-80">额外 JSON（剧情扩展，可多份）</div>
+                  <UploadJSON onLoad={obj=>setRoleData(d=>({...d, extraList:[...d.extraList, obj]}))}/>
+                </div>
+                <div className="mt-2 space-y-2">
+                  {(roleData.extraList||[]).map((x,i)=>(
+                    <div key={i} className="flex items-center gap-2">
+                      <div className="text-[11px] opacity-70">#{i+1}</div>
+                      <textarea className="flex-1 bg-black/50 rounded px-2 py-1 border border-white/10 min-h-[60px] font-mono text-xs"
+                                value={JSON.stringify(x,null,2)}
+                                onChange={e=>{try{
+                                  const obj=JSON.parse(e.target.value);
+                                  setRoleData(d=>{const arr=[...d.extraList]; arr[i]=obj; return {...d,extraList:arr};});
+                                }catch{}}}/>
+                      <button className="btn px-2 py-1 rounded text-xs" onClick={()=>{
+                        setRoleData(d=>({...d, extraList: d.extraList.filter((_,j)=>j!==i)}));
+                      }}>删</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 记忆 */}
+              <Row label="长期记忆">
+                <textarea className="flex-1 bg-black/50 rounded px-2 py-1 border border-white/10 min-h-[72px]"
+                          value={roleData.memoryLong} onChange={e=>setRoleData(d=>({...d,memoryLong:e.target.value}))}/>
+              </Row>
+              <Row label="永久记忆">
+                <textarea className="flex-1 bg-black/50 rounded px-2 py-1 border border-white/10 min-h-[72px]"
+                          value={roleData.memoryForever} onChange={e=>setRoleData(d=>({...d,memoryForever:e.target.value}))}/>
+              </Row>
+
+              {/* 参数 */}
+              <Row label="模型覆盖">
+                <input className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10"
+                       value={roleData.modelOverride} onChange={e=>setRoleData(d=>({...d,modelOverride:e.target.value}))}/>
+              </Row>
+              <Row label="温度">
+                <input type="number" step="0.1" min="0" max="2" className="w-20 bg-white/10 rounded px-2 py-1 border border-white/10"
+                       value={roleData.temperature} onChange={e=>setRoleData(d=>({...d,temperature:+e.target.value||0}))}/>
+              </Row>
+            </div>
+          </Modal>
+        )}
+      </>
+    );
+  }
+
+  /* ========== 朋友圈、小红书、音乐、联系人、占位、美化 ========== */
+  function MomentsPage({profile}){
+    const [posts,setPosts]=useState(()=>loadJSON('mp_moments',[]));
+    useEffect(()=>saveJSON('mp_moments',posts),[posts]);
+    const [text,setText]=useState('');
+    return (
+      <div className="space-y-3">
+        <Header title="朋友圈">
+          <button className="btn px-2 py-1 rounded text-xs" onClick={()=>{
+            setPosts([{id:uid(), text, time:Date.now()},...posts]); setText('');
+          }}>发布</button>
+        </Header>
+        <div className="panel rounded-2xl p-2">
+          <input className="w-full bg-white/10 rounded px-2 py-2 text-sm border border-white/10" placeholder="写点什么…" value={text} onChange={e=>setText(e.target.value)}/>
+        </div>
+        <div className="space-y-2 max-h-[62vh] overflow-auto">
+          {posts.map(p=>(
+            <div key={p.id} className="panel rounded-2xl p-3">
+              <div className="text-xs opacity-70">{new Date(p.time).toLocaleString()}</div>
+              <div className="mt-1 text-sm leading-snug whitespace-pre-wrap">{p.text}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  function XHSPage(){
+    const [url,setUrl]=useState('https://www.xiaohongshu.com/explore');
+    const [embedOk,setEmbedOk]=useState(true);
+    return (
+      <div className="space-y-3">
+        <Header title="小红书"/>
+        <div className="panel rounded-2xl p-3 space-y-2">
+          <div className="flex gap-2">
+            <input className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10 text-sm" value={url} onChange={e=>setUrl(e.target.value)}/>
+            <button className="btn px-3 py-1.5 rounded text-sm" onClick={()=>{
+              try{
+                const f=document.getElementById('xhs_iframe'); if(f) f.src=url; setEmbedOk(true);
+                setTimeout(()=>{ if(!f || !f.contentWindow){ window.open(url,'_blank'); setEmbedOk(false); }},1200);
+              }catch{ window.open(url,'_blank'); setEmbedOk(false); }
+            }}>打开</button>
+          </div>
+          {embedOk ? <iframe id="xhs_iframe" title="xhs" src={url} className="w-full h-[64vh] rounded-xl border border-white/10"></iframe>
+                   : <div className="text-xs opacity-80">已在新窗口打开。</div>}
+        </div>
+      </div>
+    );
+  }
+
+  function MusicPage(){
+    const [audioUrl,setAudioUrl]=useState('');
+    return (
+      <div className="space-y-3">
+        <Header title="播放器"/>
+        <div className="panel rounded-2xl p-3 space-y-2">
+          <div className="flex gap-2">
+            <input className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10 text-sm" placeholder="粘贴音频直链 https://..." value={audioUrl} onChange={e=>setAudioUrl(e.target.value)}/>
+          </div>
+          <audio controls src={audioUrl||undefined} className="w-full"/>
+        </div>
+      </div>
+    );
+  }
+
+  const ContactsPage=()=>(
+    <div className="space-y-3">
+      <Header title="联系人"/>
+      <div className="panel rounded-2xl p-4 text-sm">先放假数据：G、M、S、T……后续要接通讯录再说。</div>
+    </div>
+  );
+
+  function BeautyPage({theme,setTheme}){
+    return (
+      <div className="space-y-3">
+        <Header title="美化"/>
+        <div className="rounded-xl border border-white/10 p-3 bg-white/5 space-y-3">
+          <Row label="主题色"><input type="color" value={theme.accent} onChange={e=>{document.documentElement.style.setProperty('--accent', e.target.value); setTheme({...theme,accent:e.target.value})}} className="w-8 h-8 rounded"/></Row>
+          <Row label="模糊"><input type="range" min="0" max="20" value={theme.blur} onChange={e=>setTheme({...theme,blur:+e.target.value})}/> <span className="text-xs opacity-90 w-8 text-right">{theme.blur}</span></Row>
+          <Row label="字体栈"><input className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10" value={theme.font} onChange={e=>setTheme({...theme,font:e.target.value})}/></Row>
+          <Row label="背景类型">
+            <select value={theme.bgType} onChange={e=>setTheme({...theme,bgType:e.target.value})} className="text-xs bg-white/10 px-2 py-1 rounded border border-white/10">
+              <option value="color">纯色背景</option>
+              <option value="image">图片背景</option>
+            </select>
+          </Row>
+          {theme.bgType==='color' ? (
+            <Row label="背景颜色"><input type="color" value={theme.bgColor} onChange={e=>setTheme({...theme,bgColor:e.target.value})} className="w-8 h-8 rounded"/></Row>
+          ) : (
+            <Row label="上传图片">
+              <label className="text-xs btn px-2 py-1 rounded cursor-pointer">上传
+                <input type="file" accept="image/*" className="hidden" onChange={e=>{
+                  const f=e.target.files&&e.target.files[0]; if(!f) return;
+                  const r=new FileReader(); r.onload=()=>setTheme({...theme,bgImage:r.result}); r.readAsDataURL(f);
+                }}/>
+              </label>
+              {theme.bgImage && <button onClick={()=>setTheme({...theme,bgImage:''})} className="ml-2 text-xs px-2 py-1 rounded btn">清除</button>}
+            </Row>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  /* ========== 小组件 ========== */
+  const Header=({title,children})=>(
+    <div className="flex items-center justify-between">
+      <div className="px-4 py-1.5 rounded-2xl bg-black/50 border border-white/10">{title}</div>
+      <div className="flex items-center gap-2">{children}</div>
+    </div>
+  );
+  const Row=({label,children})=>(<div className="flex items-center gap-3"><div className="w-24 shrink-0 text-xs opacity-90">{label}</div><div className="flex-1 flex items-center flex-wrap gap-2">{children}</div></div>);
+
+  function Modal({title,onClose,children}){
+    return (
+      <div className="fixed inset-0 z-50">
+        <div className="absolute inset-0 bg-black/50" onClick={onClose}/>
+        <div className="absolute right-0 top-0 h-full w-[88%] max-w-sm bg-black/90 border-l border-white/10 p-3 overflow-auto">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-sm font-medium">{title}</div>
+            <button className="btn px-2 py-1 rounded text-xs" onClick={onClose}>关闭</button>
+          </div>
+          {children}
+        </div>
+      </div>
+    );
+  }
+
+  function UploadJSON({onLoad}){
+    return (
+      <label className="text-xs btn px-2 py-1 rounded cursor-pointer inline-flex items-center gap-2">
+        导入JSON
+        <input type="file" accept=".json,application/json" className="hidden"
+               onChange={async e=>{
+                 const f=e.target.files&&e.target.files[0]; if(!f) return;
+                 try{ const text=await f.text(); const obj=JSON.parse(text); onLoad && onLoad(obj); toast('已加载'); }
+                 catch(err){ toast('解析失败：'+err.message) }
+               }}/>
+      </label>
+    );
+  }
+
+  const Placeholder=({title})=>(<div className="space-y-3"><Header title={title}/><div className="panel rounded-2xl p-6 text-sm">这里先占位。</div></div>);
+
+  ReactDOM.createRoot(document.getElementById('app')).render(<App/>);
   </script>
 </body>
 </html>

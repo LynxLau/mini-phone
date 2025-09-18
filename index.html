@@ -4,9 +4,7 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
   <title>Mini Phone · Chat + Music</title>
-  <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- React + Babel (无打包运行) -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   <script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -14,9 +12,7 @@
     :root { --accent:#7c5cff; }
     html,body{height:100%; background:#0a0a0a;}
     body{margin:0; display:grid; place-items:center; overflow:hidden;}
-    /* 手机容器：自适应窗口，外层不滚动，内部滚动 */
     .phone-wrap{height:100dvh; aspect-ratio:9/19.5; max-height:900px; max-width:min(480px, 100vw); padding:16px;}
-    .glass { background: rgba(255,255,255,0.06); }
     .panel { background: rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.08); }
     .btn { background: rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.12); }
     .btn:hover{ background: rgba(255,255,255,0.12); }
@@ -29,82 +25,51 @@
   <script type="text/babel">
     const {useState,useEffect,useMemo,useRef} = React;
 
-    /* ------------- Utils ------------- */
     const uid = () => Math.random().toString(36).slice(2,9);
     const loadJSON=(k,f)=>{try{const r=localStorage.getItem(k);return r?JSON.parse(r):f}catch{return f}};
     const saveJSON=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}};
-    function fileToDataURL(file){return new Promise((res,rej)=>{if(!file) return res(""); const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(file);});}
-    function toast(msg){ const el=document.createElement('div'); el.className='toast'; el.textContent=msg; document.body.appendChild(el); setTimeout(()=>el.remove(),2200); }
+    const toast=(m)=>{const el=document.createElement('div');el.className='toast';el.textContent=m;document.body.appendChild(el);setTimeout(()=>el.remove(),2200)};
 
-    /* ------------- App ------------- */
     function App(){
-      // 主题
       const [theme,setTheme]=useState(()=>loadJSON('mp_theme',{
         accent:'#7c5cff', bgType:'image', bgColor:'#0b0b0f', bgImage:'', blur:8, glass:true,
         font:'Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto'
       }));
-      // 设置（API 等）
       const [settings,setSettings]=useState(()=>loadJSON('mp_settings',{
         apiBase:'https://api.openai.com/v1', apiKey:'', model:'', systemPrompt:'',
         characterName:'', avatar:'', temperature:0.6
       }));
-      // 角色列表（本地保存）
       const [characters,setCharacters]=useState(()=>loadJSON('mp_chars',[]));
 
-      // 音乐
-      const [playlist,setPlaylist]=useState(()=>loadJSON('mp_playlist',[
-        {id:uid(), title:'Sleepy Cat', url:''}
-      ]));
+      const [playlist,setPlaylist]=useState(()=>loadJSON('mp_playlist',[{id:uid(), title:'Sleepy Cat', url:''}]));
       const [currentId,setCurrentId]=useState(()=>loadJSON('mp_current', null));
 
-      // 持久化
       useEffect(()=>saveJSON('mp_theme',theme),[theme]);
       useEffect(()=>saveJSON('mp_settings',settings),[settings]);
       useEffect(()=>saveJSON('mp_playlist',playlist),[playlist]);
       useEffect(()=>saveJSON('mp_current',currentId),[currentId]);
       useEffect(()=>saveJSON('mp_chars',characters),[characters]);
 
-      // 注入 CSS 变量
-      useEffect(()=>{
-        const r=document.documentElement.style;
-        r.setProperty('--accent', theme.accent);
-      },[theme.accent]);
-
-      // 背景样式
-      const bgStyle = useMemo(()=>{
-        if(theme.bgType==='color') return {background:theme.bgColor};
-        return {backgroundImage:`url(${theme.bgImage})`, backgroundSize:'cover', backgroundPosition:'center'};
-      },[theme]);
-
       return (
         <div className="phone-wrap w-full">
           <div className="relative w-full h-full rounded-[32px] border border-white/15 shadow-2xl overflow-hidden bg-black/80 text-white"
-               style={{...bgStyle, fontFamily:theme.font}}>
-            {/* 模糊层 */}
+               style={{fontFamily:theme.font, backgroundImage: theme.bgType==='image' && theme.bgImage ? `url(${theme.bgImage})` : 'none', backgroundSize:'cover', backgroundPosition:'center'}}>
             <div className="absolute inset-0" style={{backdropFilter:`blur(${theme.blur}px)`}}/>
-            {/* 手机听筒装饰 */}
             <div className="absolute left-1/2 -translate-x-1/2 top-2 w-40 h-4 rounded-full bg-black/60 border border-white/10" />
-
-            <PhoneContent
-              theme={theme} setTheme={setTheme}
-              settings={settings} setSettings={setSettings}
+            <PhoneContent theme={theme} setTheme={setTheme} settings={settings} setSettings={setSettings}
               characters={characters} setCharacters={setCharacters}
-              playlist={playlist} setPlaylist={setPlaylist}
-              currentId={currentId} setCurrentId={setCurrentId}
-            />
+              playlist={playlist} setPlaylist={setPlaylist} currentId={currentId} setCurrentId={setCurrentId}/>
           </div>
         </div>
       );
     }
 
-    /* ------------- PhoneContent ------------- */
     function PhoneContent(props){
       const {theme,setTheme,settings,setSettings,characters,setCharacters,playlist,setPlaylist,currentId,setCurrentId} = props;
-      const [screen,setScreen]=useState('home'); // home | music | chat | settings | diary | weibo
+      const [screen,setScreen]=useState('home');
 
       return (
         <div className="absolute inset-0 flex flex-col">
-          {/* 顶栏 */}
           <div className="p-3 flex items-center justify-between">
             <div className="text-xs text-white/80">{new Date().toTimeString().slice(0,5)}</div>
             <div className="text-xs text-white/90 px-2 py-1 rounded-full border border-white/10 bg-black/40">
@@ -112,23 +77,15 @@
             </div>
           </div>
 
-          {/* 屏幕内容（内部可滚动） */}
           <div className="flex-1 overflow-auto px-4 pb-4 space-y-3">
-            {screen==='home' && (
-              <HomeGrid
-                playlist={playlist} setPlaylist={setPlaylist}
-                currentId={currentId} setCurrentId={setCurrentId}
-                goto={setScreen}
-              />
-            )}
-            {screen==='music' && <MusicPage playlist={playlist} setPlaylist={setPlaylist} currentId={currentId} setCurrentId={setCurrentId} back={()=>setScreen('home')}/>}
-            {screen==='chat' && <ChatPage settings={settings} characters={characters} setCharacters={setCharacters} back={()=>setScreen('home')}/>}
-            {screen==='diary' && <DiaryPage back={()=>setScreen('home')}/>}
-            {screen==='weibo' && <WeiboPage back={()=>setScreen('home')}/>}
-            {screen==='settings' && <SettingsPage theme={theme} setTheme={setTheme} settings={settings} setSettings={setSettings} back={()=>setScreen('home')}/>}
+            {screen==='home' && <HomeGrid goto={setScreen} playlist={playlist} setPlaylist={setPlaylist} currentId={currentId} setCurrentId={setCurrentId}/>}
+            {screen==='music' && <MusicPage back={()=>setScreen('home')} playlist={playlist} setPlaylist={setPlaylist} currentId={currentId} setCurrentId={setCurrentId}/>}
+            {screen==='chat' && <ChatPage back={()=>setScreen('home')} settings={settings} characters={characters} setCharacters={setCharacters}/>}
+            {screen==='settings' && <SettingsPage back={()=>setScreen('home')} theme={theme} setTheme={setTheme} settings={settings} setSettings={setSettings}/>}
+            {screen==='diary' && <SimplePage title="日记" back={()=>setScreen('home')}/>}
+            {screen==='weibo' && <SimplePage title="微博" back={()=>setScreen('home')}/>}
           </div>
 
-          {/* 底部 Dock */}
           <div className="px-4 pb-5">
             <div className="panel rounded-2xl p-3 grid grid-cols-3 gap-2">
               <DockBtn label="音乐" onClick={()=>setScreen('music')}>🎵</DockBtn>
@@ -139,7 +96,6 @@
         </div>
       );
     }
-
     const DockBtn=({children,label,onClick})=>(
       <button onClick={onClick} className="flex flex-col items-center gap-1">
         <div className="w-12 h-12 rounded-2xl panel grid place-items-center text-xl">{children}</div>
@@ -147,13 +103,11 @@
       </button>
     );
 
-    /* ------------- 首页 ------------- */
-    function HomeGrid({playlist,setPlaylist,currentId,setCurrentId, goto}){
-      const current = useMemo(()=> playlist.find(x=>x.id===currentId) || playlist[0], [playlist,currentId]);
-      useEffect(()=>{ if(!current && playlist.length) setCurrentId(playlist[0].id); },[current,playlist,setCurrentId]);
+    function HomeGrid({goto,playlist,setPlaylist,currentId,setCurrentId}){
+      const current = React.useMemo(()=> playlist.find(x=>x.id===currentId) || playlist[0], [playlist,currentId]);
+      React.useEffect(()=>{ if(!current && playlist.length) setCurrentId(playlist[0].id); },[current,playlist,setCurrentId]);
       return (
         <div className="space-y-3">
-          {/* 大播放器卡片（加大） */}
           <div className="panel rounded-2xl p-4">
             <div className="flex items-start gap-3">
               <div className="w-16 h-16 rounded-2xl bg-black/50 border border-white/10 grid place-items-center">
@@ -171,14 +125,10 @@
               </div>
             </div>
           </div>
-
-          {/* 两个小组件占位 */}
           <div className="grid grid-cols-2 gap-3">
             <div className="panel rounded-2xl h-28" />
             <div className="panel rounded-2xl h-28" />
           </div>
-
-          {/* 六宫格 */}
           <div className="grid grid-cols-3 gap-6 pt-2">
             <IconBtn label="音乐" onClick={()=>goto('music')}>🎵</IconBtn>
             <IconBtn label="聊天" onClick={()=>goto('chat')}>💬</IconBtn>
@@ -197,18 +147,16 @@
       </button>
     );
 
-    /* ------------- 音乐页 ------------- */
     function MusicPage({playlist,setPlaylist,currentId,setCurrentId,back}){
-      const current = useMemo(()=> playlist.find(x=>x.id===currentId) || playlist[0], [playlist,currentId]);
+      const current = React.useMemo(()=> playlist.find(x=>x.id===currentId) || playlist[0], [playlist,currentId]);
       const [title,setTitle]=useState(''); const [url,setUrl]=useState('');
-      const audioRef=useRef(null);
-      useEffect(()=>{ if(!current && playlist.length) setCurrentId(playlist[0].id); },[current,playlist,setCurrentId]);
+      React.useEffect(()=>{ if(!current && playlist.length) setCurrentId(playlist[0].id); },[current,playlist,setCurrentId]);
       return (
         <div className="space-y-3">
           <Header title="音乐" back={back}/>
           <div className="panel rounded-2xl p-4 space-y-3">
             <div className="text-sm">当前：{current? (current.title || '未命名曲目'):'暂无'}</div>
-            <audio ref={audioRef} controls src={current?.url || undefined} className="w-full"/>
+            <audio controls src={current?.url || undefined} className="w-full"/>
             <div className="flex gap-2">
               <input className="flex-1 bg-white/10 border border-white/10 rounded px-2 py-1 text-sm" placeholder="曲名" value={title} onChange={e=>setTitle(e.target.value)}/>
               <input className="flex-[2] bg-white/10 border border-white/10 rounded px-2 py-1 text-sm" placeholder="音频 URL" value={url} onChange={e=>setUrl(e.target.value)}/>
@@ -233,30 +181,82 @@
       );
     }
 
-    /* ------------- 聊天页（带创建角色） ------------- */
+    /* ---------- 聊天：真正调用 /chat/completions ---------- */
     function ChatPage({settings,characters,setCharacters,back}){
       const [selectedId,setSelectedId]=useState(null);
-      const selected = useMemo(()=>characters.find(c=>c.id===selectedId)||null,[characters,selectedId]);
+      const selected = React.useMemo(()=>characters.find(c=>c.id===selectedId)||null,[characters,selectedId]);
 
-      // 创建角色面板
       const [showCreate,setShowCreate]=useState(false);
-      const [nick,setNick]=useState('');
-      const [model,setModel]=useState('');
+      const [nick,setNick]=useState(''); const [model,setModel]=useState('');
+
+      // 简单消息存储在内存（可扩展为每个角色独立持久化）
+      const [msgs,setMsgs]=useState([]);
+
+      const base = (settings.apiBase||'').replace(/\/$/,'');
+      const headers = {'Content-Type':'application/json','Authorization':'Bearer '+(settings.apiKey||'')};
+
+      async function send(text){
+        // 前置校验
+        const modelToUse = (selected?.model || settings.model || '').trim();
+        if(!settings.apiKey || !settings.apiBase || !modelToUse){
+          toast('API 调用失败：API Key, Model 或 API Base 未设置。'); return;
+        }
+        const newMsgs = [...msgs, {role:'user', content:text, id:uid()}];
+        setMsgs(newMsgs);
+
+        try{
+          const res = await fetch(base + '/chat/completions', {
+            method:'POST',
+            headers,
+            body: JSON.stringify({
+              model: modelToUse,
+              temperature: Number.isFinite(+settings.temperature)? +settings.temperature : 0.6,
+              messages: [
+                ...(settings.systemPrompt ? [{role:'system', content:settings.systemPrompt}] : []),
+                ...newMsgs.map(m=>({role:m.role, content:m.content}))
+              ],
+            })
+          });
+          if(!res.ok){
+            // 某些网关用 /v1/completions 老接口，尝试降级
+            if(res.status===404){
+              const res2 = await fetch(base + '/completions', {
+                method:'POST',
+                headers,
+                body: JSON.stringify({
+                  model: modelToUse,
+                  prompt: newMsgs.map(m=> (m.role==='user' ? `User: ${m.content}` : `Assistant: ${m.content}`)).join('\n') + '\nAssistant:',
+                  temperature: Number.isFinite(+settings.temperature)? +settings.temperature : 0.6
+                })
+              });
+              if(!res2.ok) throw new Error('HTTP ' + res2.status);
+              const data2 = await res2.json();
+              const text2 = data2?.choices?.[0]?.text ?? '[empty]';
+              setMsgs(m=>[...m,{role:'assistant', content:text2, id:uid()}]);
+              return;
+            }
+            throw new Error('HTTP ' + res.status);
+          }
+          const data = await res.json();
+          const content = data?.choices?.[0]?.message?.content ?? '[empty]';
+          setMsgs(m=>[...m,{role:'assistant', content, id:uid()}]);
+        }catch(e){
+          toast('请求失败：' + (e.message||e));
+        }
+      }
 
       function addCharacter(){
         const name = nick.trim();
         if(!name){ toast('请填写昵称'); return; }
-        const c={id:uid(), name, model:model.trim()||settings.model||'', createdAt:Date.now()};
+        const c={id:uid(), name, model:model.trim() || settings.model || '', createdAt:Date.now()};
         setCharacters([...characters,c]);
-        setShowCreate(false); setNick(''); setModel('');
-        setSelectedId(c.id);
+        setShowCreate(false); setNick(''); setModel(''); setSelectedId(c.id);
+        setMsgs([]);
       }
 
       return (
         <div className="space-y-3">
           <Header title="聊天" back={back}/>
-
-          {/* 无角色时的提示或列表 */}
           {!selected && (
             <div className="panel rounded-2xl p-4 space-y-3">
               <div className="flex items-center justify-between">
@@ -274,7 +274,7 @@
                         <div className="text-xs opacity-80">模型：{c.model || '未选择'}</div>
                       </div>
                       <div className="flex gap-2">
-                        <button className="btn px-2 py-1 rounded text-xs" onClick={()=>setSelectedId(c.id)}>进入</button>
+                        <button className="btn px-2 py-1 rounded text-xs" onClick={()=>{setSelectedId(c.id); setMsgs([]);}}>进入</button>
                         <button className="btn px-2 py-1 rounded text-xs" onClick={()=>setCharacters(characters.filter(x=>x.id!==c.id))}>删除</button>
                       </div>
                     </div>
@@ -284,21 +284,30 @@
             </div>
           )}
 
-          {/* 聊天占位（后续接入世界书/脚本等） */}
           {selected && (
             <div className="panel rounded-2xl p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="text-sm"><span className="opacity-80">当前：</span>{selected.name}</div>
                 <button className="btn px-3 py-1.5 rounded" onClick={()=>setSelectedId(null)}>切换</button>
               </div>
-              <div className="rounded-lg border border-white/10 p-3 bg-white/5 text-sm leading-relaxed">
-                <div><span className="opacity-80">模型：</span>{selected.model || '未选择'}</div>
-                <div className="opacity-80 mt-2">聊天界面高级配置我们下一步接入（世界书、脚本、气泡色、是否自动发言等）。</div>
+
+              {/* 消息区 */}
+              <div className="max-h-96 overflow-auto space-y-2 border border-white/10 rounded p-3 bg-white/5">
+                {msgs.length===0 && <div className="text-xs opacity-70">开始聊天吧。你可以先说“你好”。</div>}
+                {msgs.map(m=>(
+                  <div key={m.id} className={`max-w-[85%] px-3 py-2 rounded-2xl text-sm leading-relaxed border ${m.role==='user'
+                    ? 'self-end ml-auto bg-[var(--accent)]/90 text-white border-[var(--accent)]/60'
+                    : 'self-start mr-auto bg-white/10 text-white/90 border-white/20'}`}>
+                    {m.content}
+                  </div>
+                ))}
               </div>
+
+              {/* 输入区 */}
+              <ChatInput onSend={(t)=>{ if(!t.trim()) return; send(t.trim()); }}/>
             </div>
           )}
 
-          {/* 创建角色弹层 */}
           {showCreate && (
             <div className="fixed inset-0 bg-black/60 backdrop-blur-sm grid place-items-center">
               <div className="panel rounded-2xl p-4 w-[88%] max-w-sm space-y-3">
@@ -317,21 +326,25 @@
       );
     }
 
-    /* ------------- 日记 / 微博 ------------- */
-    const DiaryPage=({back})=>(
+    const ChatInput=({onSend})=>{
+      const [v,setV]=useState('');
+      return (
+        <div className="flex items-center gap-2">
+          <input className="flex-1 bg-white/10 rounded-xl px-3 py-2 text-sm border border-white/10 focus:outline-none"
+                 placeholder="说点什么…" value={v} onChange={e=>setV(e.target.value)}
+                 onKeyDown={e=>{ if(e.key==='Enter' && !e.shiftKey){ onSend(v); setV(''); }}}/>
+          <button className="px-3 py-2 rounded-xl bg-[var(--accent)] text-white text-sm" onClick={()=>{onSend(v); setV('')}}>发送</button>
+        </div>
+      );
+    };
+
+    const SimplePage=({title,back})=>(
       <div className="space-y-3">
-        <Header title="日记" back={back}/>
-        <div className="panel rounded-2xl p-6 text-sm">这里记点心情，先喝口水再写字。</div>
-      </div>
-    );
-    const WeiboPage=({back})=>(
-      <div className="space-y-3">
-        <Header title="微博" back={back}/>
-        <div className="panel rounded-2xl p-6 text-sm">放常用链接或嵌入。骨架先搭住。</div>
+        <Header title={title} back={back}/>
+        <div className="panel rounded-2xl p-6 text-sm">这里先占位。</div>
       </div>
     );
 
-    /* ------------- 设置页（含获取模型/测试） ------------- */
     function SettingsPage({theme,setTheme,settings,setSettings,back}){
       return (
         <div className="space-y-3">
@@ -345,7 +358,7 @@
       <div className="flex items-center justify-between">
         <button onClick={back} className="px-3 py-1.5 text-xs rounded bg-white/10 border border-white/10">返回</button>
         <div className="px-4 py-1.5 rounded-2xl bg-black/50 border border-white/10">{title}</div>
-        <div className="w-[62px]"/>{/* 对齐占位 */}
+        <div className="w-[62px]"/>
       </div>
     );
 
@@ -354,14 +367,11 @@
       const defaults={apiBase:'https://api.openai.com/v1',apiKey:'',model:'',systemPrompt:'',characterName:'',avatar:'',temperature:0.6};
       const [temp,setTemp]=useState(()=>({...defaults,...settings}));
       const [tTheme,setTTheme]=useState(theme);
+      const [models,setModels]=useState([]); const [checking,setChecking]=useState(false); const [checkMsg,setCheckMsg]=useState('');
       const tval = Number.isFinite(+temp.temperature)?+temp.temperature:0.6;
 
-      const [models,setModels]=useState([]);
-      const [checking,setChecking]=useState(false);
-      const [checkMsg,setCheckMsg]=useState('');
-
-      const baseUrl = useMemo(()=> (temp.apiBase||'').replace(/\/$/,''), [temp.apiBase]);
-      const headers = useMemo(()=> ({'Content-Type':'application/json','Authorization':'Bearer '+(temp.apiKey||'')}), [temp.apiKey]);
+      const baseUrl = React.useMemo(()=> (temp.apiBase||'').replace(/\/$/,''), [temp.apiBase]);
+      const headers = React.useMemo(()=> ({'Content-Type':'application/json','Authorization':'Bearer '+(temp.apiKey||'')}), [temp.apiKey]);
 
       function saveAll(){ setSettings({...temp,temperature:tval}); setTheme(tTheme); toast('已保存'); }
 
@@ -374,9 +384,8 @@
           const list = (data?.data || data?.models || []).map(x=>x.id || x.name).filter(Boolean).sort();
           setModels(list);
           setCheckMsg(`已连接 · ${list.length} 个模型 ✅`);
-        }catch(e){
-          setCheckMsg('连接失败 · ' + (e.message||e)); toast(e.message||e);
-        }finally{ setChecking(false); }
+        }catch(e){ setCheckMsg('连接失败 · ' + (e.message||e)); toast(e.message||e); }
+        finally{ setChecking(false); }
       }
 
       async function testAPI(){
@@ -386,9 +395,8 @@
           if(!res.ok) throw new Error('HTTP '+res.status);
           await res.json();
           setCheckMsg('测试通过 · API 可用 ✅');
-        }catch(e){
-          setCheckMsg('测试失败 · ' + (e.message||e)); toast(e.message||e);
-        }finally{ setChecking(false); }
+        }catch(e){ setCheckMsg('测试失败 · ' + (e.message||e)); toast(e.message||e); }
+        finally{ setChecking(false); }
       }
 
       return (
@@ -429,63 +437,54 @@
               <div className="mt-2 p-2 rounded-lg bg-white/5 border border-white/10 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <button onClick={fetchModels} disabled={checking || !temp.apiKey || !temp.apiBase}
-                          className="text-xs px-3 py-1 rounded btn disabled:opacity-50">
-                    {checking ? '获取中…' : '获取模型列表'}
-                  </button>
+                          className="text-xs px-3 py-1 rounded btn disabled:opacity-50">{checking ? '获取中…' : '获取模型列表'}</button>
                   <button onClick={testAPI} disabled={checking || !temp.apiKey || !temp.apiBase}
-                          className="text-xs px-3 py-1 rounded btn disabled:opacity-50">
-                    {checking ? '测试中…' : '测试 API'}
-                  </button>
+                          className="text-xs px-3 py-1 rounded btn disabled:opacity-50">{checking ? '测试中…' : '测试 API'}</button>
                 </div>
-                <div className="text-xs opacity-90">{checkMsg || '说明：大多数 OpenAI 兼容网关支持 /v1/models。若路径不同，把 API Base 改到其 /v1 根即可。'}</div>
+                <div className="text-xs opacity-90">{checkMsg || '兼容 OpenAI /v1；若 404 会自动尝试旧 /v1/completions。'}</div>
               </div>
 
               <div className="flex items-center justify-end gap-2 mt-2">
-                <button onClick={saveAll} className="text-xs px-3 py-1 rounded bg-[var(--accent)] text-white">保存</button>
+                <button onClick={()=>{ setSettings({...temp,temperature:tval}); setTheme(tTheme); toast('已保存'); }} className="text-xs px-3 py-1 rounded bg-[var(--accent)] text-white">保存</button>
               </div>
             </div>
           )}
 
           {tab==='beauty' && (
             <div className="rounded-xl border border-white/10 p-3 bg-white/5 space-y-3">
-              <Row label="主题色"><input type="color" value={tTheme.accent} onChange={e=>setTTheme({...tTheme,accent:e.target.value})} className="w-8 h-8 rounded"/></Row>
-              <Row label="毛玻璃"><input type="checkbox" checked={tTheme.glass} onChange={e=>setTTheme({...tTheme,glass:e.target.checked})}/></Row>
-              <Row label="模糊"><input type="range" min="0" max="20" value={tTheme.blur} onChange={e=>setTTheme({...tTheme,blur:+e.target.value})}/> <span className="text-xs opacity-90 w-8 text-right">{tTheme.blur}</span></Row>
+              <Row label="主题色"><input type="color" value={tTheme.accent} onChange={e=>setTheme({...tTheme,accent:e.target.value})} className="w-8 h-8 rounded"/></Row>
+              <Row label="模糊"><input type="range" min="0" max="20" value={tTheme.blur} onChange={e=>setTheme({...tTheme,blur:+e.target.value})}/> <span className="text-xs opacity-90 w-8 text-right">{tTheme.blur}</span></Row>
             </div>
           )}
 
           {tab==='font' && (
             <div className="rounded-xl border border-white/10 p-3 bg-white/5 space-y-3">
-              <Row label="字体栈"><input value={tTheme.font} onChange={e=>setTTheme({...tTheme,font:e.target.value})} className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10"/></Row>
-              <div className="flex flex-wrap gap-2 text-xs">
-                {[
-                  'Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto',
-                  'Noto Serif SC, ui-serif, Georgia, serif',
-                  'LXGW WenKai, system-ui, sans-serif',
-                ].map(f=>(<button key={f} onClick={()=>setTTheme({...tTheme,font:f})} className="px-2 py-1 rounded btn">{f.split(',')[0]}</button>))}
-              </div>
+              <Row label="字体栈"><input value={tTheme.font} onChange={e=>setTheme({...tTheme,font:e.target.value})} className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10"/></Row>
             </div>
           )}
 
           {tab==='background' && (
             <div className="rounded-xl border border-white/10 p-3 bg-white/5 space-y-3">
               <Row label="类型">
-                <select value={tTheme.bgType} onChange={e=>setTTheme({...tTheme,bgType:e.target.value})} className="text-xs bg-white/10 px-2 py-1 rounded border border-white/10">
+                <select value={tTheme.bgType} onChange={e=>setTheme({...tTheme,bgType:e.target.value})} className="text-xs bg-white/10 px-2 py-1 rounded border border-white/10">
                   <option value="color">纯色背景</option>
                   <option value="image">图片背景</option>
                 </select>
               </Row>
-              {tTheme.bgType==='color' ? (
-                <Row label="颜色"><input type="color" value={tTheme.bgColor} onChange={e=>setTTheme({...tTheme,bgColor:e.target.value})} className="w-8 h-8 rounded"/></Row>
+              {theme.bgType==='color' ? (
+                <Row label="颜色"><input type="color" value={theme.bgColor} onChange={e=>setTheme({...theme,bgColor:e.target.value})} className="w-8 h-8 rounded"/></Row>
               ) : (
                 <Row label="图片">
                   <label className="text-xs btn px-2 py-1 rounded cursor-pointer">上传图片
-                    <input type="file" accept="image/*" className="hidden" onChange={e=>fileToDataURL(e.target.files&&e.target.files[0]).then(url=>setTTheme({...tTheme,bgImage:url||''}))}/>
+                    <input type="file" accept="image/*" className="hidden" onChange={e=>{
+                      const f=e.target.files&&e.target.files[0]; if(!f) return;
+                      const r=new FileReader(); r.onload=()=>setTheme({...theme,bgImage:r.result}); r.readAsDataURL(f);
+                    }}/>
                   </label>
-                  {tTheme.bgImage && <button onClick={()=>setTTheme({...tTheme,bgImage:''})} className="ml-2 text-xs px-2 py-1 rounded btn">清除</button>}
+                  {theme.bgImage && <button onClick={()=>setTheme({...theme,bgImage:''})} className="ml-2 text-xs px-2 py-1 rounded btn">清除</button>}
                 </Row>
               )}
-              <div className="text-xs opacity-80">提示：这个背景只作用于手机屏幕内部。</div>
+              <div className="text-xs opacity-80">提示：此背景仅作用于手机屏幕内部。</div>
             </div>
           )}
         </div>
@@ -495,15 +494,7 @@
     const Row=({label,children})=>(<div className="flex items-center gap-3"><div className="w-20 shrink-0 text-xs opacity-90">{label}</div><div className="flex-1 flex items-center flex-wrap gap-2">{children}</div></div>);
     const TabButton=({active,onClick,children})=>(<button onClick={onClick} className={`px-3 py-1.5 rounded-lg border text-xs ${active?'bg-white/15 border-white/20':'bg-white/5 border-white/10 hover:bg-white/10'}`}>{children}</button>);
 
-    /* ------------- Render & tiny tests ------------- */
     ReactDOM.createRoot(document.getElementById('app')).render(<App/>);
-    if (typeof window!=='undefined'){
-      try{
-        console.assert(typeof uid()==='string' && uid().length>=3,'uid short string ok');
-        console.assert(loadJSON('__missing__',42)===42,'loadJSON fallback ok');
-        console.log('[MiniPhone] ready');
-      }catch(e){ console.error('[MiniPhone tests] failed',e); }
-    }
   </script>
 </body>
 </html>

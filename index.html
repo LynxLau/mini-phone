@@ -23,6 +23,11 @@
     #errbox{position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:9999;display:none;
       background:#b91c1c;color:#fff;border:1px solid #fecaca;border-radius:12px;padding:10px 12px;
       font:12px/1.4 ui-sans-serif,system-ui}
+
+    /* 自定义样式 */
+    .user-bubble { background-color: var(--user-bubble-bg, var(--accent)); color: var(--user-text-color, #fff); }
+    .bot-bubble { background-color: var(--bot-bubble-bg, rgba(255,255,255,0.05)); color: var(--bot-text-color, #fff); }
+    .status-bar-container { position: absolute; top: 0; left: 0; right: 0; z-index: 10; padding: 0.5rem 1rem; }
   </style>
 </head>
 <body>
@@ -85,7 +90,7 @@
 
       /* 新增：消息列表/房间视图状态与数据 */
       const [chats, setChats] = useLocalStorage('mp_chats', []); // [{id,name,msgs:[...]}]
-      const [chatView, setChatView] = useState({ mode: 'list', id: null }); // list|room
+      const [chatView, setChatView] = useState({ mode: 'list', id: null }); // list|room|settings
 
       useEffect(()=>{ const r=document.documentElement.style;
         r.setProperty('--accent', theme.accent);
@@ -114,14 +119,23 @@
                   title={chatView.mode==='list' ? '消息' : (chats.find(c=>c.id===chatView.id)?.name||'聊天')}
                   onBack={()=>{
                     if(chatView.mode==='room') setChatView({mode:'list',id:null});
+                    else if(chatView.mode==='settings') setChatView({mode:'room', id: chatView.id});
                     else setView('home');
                   }}>
                   {chatView.mode==='list'
                     ? <ChatHome chats={chats} setChats={setChats} onOpen={(id)=>setChatView({mode:'room',id})}/>
-                    : <ChatRoom chat={chats.find(c=>c.id===chatView.id)}
+                    : chatView.mode==='room'
+                      ? <ChatRoom chat={chats.find(c=>c.id===chatView.id)}
                                 setChats={setChats}
                                 onExit={()=>setChatView({mode:'list',id:null})}
-                                settings={settings}/>}
+                                settings={settings}
+                                onOpenSettings={(chatId)=>setChatView({mode:'settings', id: chatId})}
+                                />
+                      : <ChatSettingsPanel
+                          chat={chats.find(c=>c.id===chatView.id)}
+                          setChats={setChats}
+                          onExit={()=>setChatView({mode:'room', id: chatView.id})}
+                        />}
                 </Overlay>
               )}
 
@@ -264,8 +278,9 @@
               <div className="text-sm opacity-90">{title}</div>
               <div className="w-10"></div>
             </div>
-            <div className="flex-1 p-3 overflow-auto" style={{WebkitOverflowScrolling:'touch'}}>
-              <div className="rounded-2xl border border-white/10 bg-[#0b0b0f]/85 p-3 min-h-full">
+            <div className="flex-1 overflow-auto" style={{WebkitOverflowScrolling:'touch'}}>
+              {/* This inner div is what gives all pages a consistent card look. */}
+              <div className="min-h-full p-3 rounded-2xl border border-white/10 bg-[#0b0b0f]/85">
                 {children}
               </div>
             </div>
@@ -315,20 +330,40 @@
 
     /* 消息列表页 */
     function ChatHome({chats, setChats, onOpen}) {
-      function addChat() {
-        const name = prompt('给聊天取个名字：');
+      const [showAddChatModal, setShowAddChatModal] = useState(false);
+      const [newChatName, setNewChatName] = useState('');
+
+      const handleAddChat = () => {
+        setShowAddChatModal(true);
+      };
+
+      const createChat = () => {
+        const name = newChatName.trim();
         if (!name) return;
         const id = uid();
-        setChats([...chats, { id, name, msgs: [botMsg('新会话，开始聊天吧。')] }]);
+        setChats([...chats, { 
+          id, 
+          name, 
+          msgs: [botMsg('新会话，开始聊天吧。')],
+          style: {},
+          settings: {
+            userRole: '',
+            worldbook: {},
+            script: ''
+          }
+        }]);
+        setNewChatName('');
+        setShowAddChatModal(false);
         onOpen(id);
-      }
+      };
+
       return (
-        <div className="flex flex-col h-full">
-          <div className="flex items-center justify-end gap-2 mb-2">
-            <button onClick={addChat} className="text-xs px-2 py-1 rounded bg-white/10 border border-white/10">＋ 新建</button>
+        <div className="flex flex-col h-full relative">
+          <div className="flex items-center justify-end gap-2 px-3 py-2">
+            <button onClick={handleAddChat} className="text-xs px-2 py-1 rounded bg-white/10 border border-white/10">＋ 新建</button>
           </div>
 
-          <div className="flex-1 rounded-xl border border-white/10 bg-white/5 overflow-auto" style={{WebkitOverflowScrolling:'touch'}}>
+          <div className="flex-1 overflow-auto" style={{WebkitOverflowScrolling:'touch'}}>
             {chats.length === 0 ? (
               <div className="h-full grid place-items-center text-sm opacity-70 p-6">
                 点击右上角「＋」或长按头像添加聊天
@@ -353,14 +388,34 @@
               </ul>
             )}
           </div>
+          {showAddChatModal && (
+            <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+              <div className="bg-[#0b0b0f]/90 p-6 rounded-2xl border border-white/10 flex flex-col gap-4">
+                <div className="text-sm font-medium">给新聊天取个名字吧</div>
+                <input
+                  type="text"
+                  value={newChatName}
+                  onChange={(e) => setNewChatName(e.target.value)}
+                  placeholder="聊天名称"
+                  className="bg-white/10 rounded-xl px-3 py-2 text-sm border border-white/10 focus:outline-none"
+                  onKeyDown={(e) => e.key === 'Enter' && createChat()}
+                />
+                <div className="flex justify-end gap-2">
+                  <button onClick={() => setShowAddChatModal(false)} className="text-xs px-3 py-1 rounded bg-white/10 border border-white/10">取消</button>
+                  <button onClick={createChat} className="text-xs px-3 py-1 rounded bg-[var(--accent)] text-white">创建</button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       );
     }
 
     /* 聊天房间：消息写回对应会话 */
-    function ChatRoom({chat, setChats, onExit, settings}) {
+    function ChatRoom({chat, setChats, onExit, settings, onOpenSettings}) {
       const [input, setInput] = React.useState('');
       const messages = chat?.msgs || [];
+      const chatSettings = chat?.settings || {};
 
       function updateMsgs(newMsgs){
         setChats(cs => cs.map(c => c.id===chat.id ? {...c, msgs:newMsgs} : c));
@@ -370,9 +425,24 @@
         const text=input.trim(); if(!text) return;
         const newMsgs=[...messages, userMsg(text)];
         updateMsgs(newMsgs); setInput('');
+
+        // 检查是否有脚本自动回复
+        if (chatSettings.script) {
+          try {
+            const scriptFunc = new Function('messages', 'input', chatSettings.script);
+            const scriptReply = scriptFunc(newMsgs, text);
+            if (scriptReply) {
+              updateMsgs([...newMsgs, botMsg(scriptReply)]);
+              return;
+            }
+          } catch(e) {
+            console.error('Script error:', e);
+          }
+        }
+        
         if (settings?.apiKey && settings?.model){
           try{
-            const reply = await callLLM(settings, newMsgs);
+            const reply = await callLLM(settings, newMsgs, chatSettings.worldbook);
             updateMsgs([...newMsgs, botMsg(reply)]);
           }catch{
             updateMsgs([...newMsgs, botMsg(localBrain(text))]);
@@ -382,24 +452,136 @@
         }
       }
 
+      const statusBarStyle = chat?.style?.statusBar || {};
+      const userBubbleStyle = chat?.style?.userBubble || {};
+      const botBubbleStyle = chat?.style?.botBubble || {};
+
       return (
-        <div className="flex flex-col h-full">
-          <div className="flex-1 overflow-auto p-2 space-y-2" style={{WebkitOverflowScrolling:'touch'}}>
+        <div className="flex flex-col h-full bg-[#0b0b0f]/85 p-3 rounded-2xl border border-white/10">
+          {/* Chat Header */}
+          <div className="flex-shrink-0 h-12 px-4 flex items-center justify-between">
+            <button onClick={onExit} className="text-white text-xl p-1">
+              &lt;
+            </button>
+            <div className="flex-1 text-center text-base font-medium opacity-90">{chat?.name||'聊天'}</div>
+            <div className="flex-shrink-0 flex items-center space-x-2">
+              <button className="text-white text-xl p-1">❤️</button>
+              <button onClick={()=>onOpenSettings(chat.id)} className="text-white text-xl p-1">⚙️</button>
+            </div>
+          </div>
+
+          {/* Chat Messages */}
+          <div className="flex-1 overflow-auto px-4 py-3 space-y-3" style={{WebkitOverflowScrolling:'touch'}}>
             {messages.map(m=>(
               <div key={m.id}
                    className={`max-w-[86%] md:max-w-[70%] rounded-2xl px-3 py-2 text-sm leading-relaxed shadow border ${
                      m.role==='user'
-                       ? 'self-end bg-[var(--accent)]/90 text-white border-[var(--accent)]/60 ml-auto'
-                       : 'self-start bg-white/5 text-white/90 border-white/10'
-                   }`}>
+                       ? 'self-end text-white border ml-auto'
+                       : 'self-start text-white border'
+                   }`}
+                   style={m.role === 'user' ? {backgroundColor: chat?.style?.userBubble?.backgroundColor || 'var(--accent)', color: chat?.style?.userBubble?.color || '#fff', borderColor: chat?.style?.userBubble?.borderColor || 'var(--accent)'} : {backgroundColor: chat?.style?.botBubble?.backgroundColor || 'rgba(255,255,255,0.05)', color: chat?.style?.botBubble?.color || '#fff', borderColor: chat?.style?.botBubble?.borderColor || 'rgba(255,255,255,0.1)'}}>
                 {m.text}
               </div>
             ))}
           </div>
-          <div className="flex items-center gap-2 p-2 border-t border-white/10">
-            <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=> e.key==='Enter' && (e.shiftKey?null:send())}
-                   placeholder="说点什么…" className="flex-1 bg-white/10 rounded-xl px-3 py-2 text-sm border border-white/10 focus:outline-none"/>
-            <button onClick={send} className="px-3 py-2 rounded-xl bg-[var(--accent)] text-white text-sm hover:opacity-90">发送</button>
+
+          {/* Input Area */}
+          <div className="flex-shrink-0 p-3 border-t border-white/10 flex items-center space-x-2">
+            <button className="text-white text-2xl p-2 rounded-full bg-white/10 w-10 h-10 flex items-center justify-center">＋</button>
+            <input
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && send()}
+                placeholder="输入消息..."
+                className="flex-1 bg-white/10 rounded-full px-4 py-2 text-sm border border-white/10 focus:outline-none"
+            />
+            <button onClick={send} className="text-sm px-3 py-2 rounded-xl bg-[var(--accent)] text-white">发送</button>
+          </div>
+        </div>
+      );
+    }
+
+    /* 聊天设置面板 */
+    function ChatSettingsPanel({chat, setChats, onExit}) {
+      const [localChat, setLocalChat] = useState(chat);
+    
+      const updateChat = (newChat) => {
+        setLocalChat(newChat);
+        setChats(cs => cs.map(c => c.id === newChat.id ? newChat : c));
+      };
+    
+      const handleImportJSON = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          try {
+            const parsed = JSON.parse(event.target.result);
+            if (parsed.worldbook) {
+              updateChat({ ...localChat, settings: { ...localChat.settings, worldbook: parsed.worldbook } });
+            }
+            if (parsed.characterCard) {
+              updateChat({ ...localChat, settings: { ...localChat.settings, characterCard: parsed.characterCard } });
+            }
+          } catch (error) {
+            showError('Invalid JSON file.');
+            console.error(error);
+          }
+        };
+        reader.readAsText(file);
+      };
+    
+      return (
+        <div className="flex flex-col gap-3">
+          <div className="text-sm font-medium">聊天设置</div>
+          
+          {/* 导入JSON */}
+          <div className="flex flex-col gap-2 p-3 bg-white/5 border border-white/10 rounded-xl">
+            <div className="text-xs opacity-80">导入世界书/角色卡 (JSON)</div>
+            <label className="text-xs bg-white/10 px-2 py-1 rounded border border-white/10 cursor-pointer">
+              选择文件
+              <input type="file" accept=".json" className="hidden" onChange={handleImportJSON} />
+            </label>
+            <textarea readOnly value={JSON.stringify(localChat.settings.worldbook, null, 2)} className="w-full h-24 bg-white/10 text-xs p-2 rounded border border-white/10 focus:outline-none" placeholder="导入的JSON内容"></textarea>
+          </div>
+    
+          {/* 美化设置 */}
+          <div className="flex flex-col gap-2 p-3 bg-white/5 border border-white/10 rounded-xl">
+            <div className="text-xs opacity-80">聊天页面美化</div>
+            <Row label="用户气泡颜色">
+              <input type="color" value={localChat.style.userBubble?.backgroundColor || '#8e86ff'} onChange={e => updateChat({ ...localChat, style: { ...localChat.style, userBubble: { ...localChat.style.userBubble, backgroundColor: e.target.value } } })} className="w-8 h-8 rounded" />
+            </Row>
+            <Row label="用户文字颜色">
+              <input type="color" value={localChat.style.userBubble?.color || '#fff'} onChange={e => updateChat({ ...localChat, style: { ...localChat.style, userBubble: { ...localChat.style.userBubble, color: e.target.value } } })} className="w-8 h-8 rounded" />
+            </Row>
+            <Row label="角色气泡颜色">
+              <input type="color" value={localChat.style.botBubble?.backgroundColor || '#15151a'} onChange={e => updateChat({ ...localChat, style: { ...localChat.style, botBubble: { ...localChat.style.botBubble, backgroundColor: e.target.value } } })} className="w-8 h-8 rounded" />
+            </Row>
+            <Row label="角色文字颜色">
+              <input type="color" value={localChat.style.botBubble?.color || '#fff'} onChange={e => updateChat({ ...localChat, style: { ...localChat.style, botBubble: { ...localChat.style.botBubble, color: e.target.value } } })} className="w-8 h-8 rounded" />
+            </Row>
+            <Row label="状态栏脚本 (CSS)">
+              <textarea value={localChat.style.statusBar?.cssText || ''} onChange={e => updateChat({ ...localChat, style: { ...localChat.style, statusBar: { cssText: e.target.value } } })} className="flex-1 bg-white/10 text-xs p-2 rounded border border-white/10 focus:outline-none" rows="3" placeholder="例如: background: linear-gradient(...);"></textarea>
+            </Row>
+          </div>
+    
+          {/* 用户角色设定 */}
+          <div className="flex flex-col gap-2 p-3 bg-white/5 border border-white/10 rounded-xl">
+            <div className="text-xs opacity-80">用户角色设定</div>
+            <Row label="你的昵称">
+              <input value={localChat.settings?.userRole || ''} onChange={e => updateChat({ ...localChat, settings: { ...localChat.settings, userRole: e.target.value } })} className="flex-1 text-sm bg-white/10 rounded px-2 py-1 border border-white/10 focus:outline-none" placeholder="例如：玩家"/>
+            </Row>
+            <div className="text-xs opacity-70">提示：这个昵称会在发送给API的提示中作为你的角色名。</div>
+          </div>
+    
+          {/* 脚本设置 */}
+          <div className="flex flex-col gap-2 p-3 bg-white/5 border border-white/10 rounded-xl">
+            <div className="text-xs opacity-80">聊天脚本</div>
+            <div className="text-xs opacity-70">你可以编写一个JS函数，它接收 `messages` 和 `input`，并返回一个字符串作为回复。如果返回空，则调用API。</div>
+            <textarea value={localChat.settings?.script || ''} onChange={e => updateChat({ ...localChat, settings: { ...localChat.settings, script: e.target.value } })} className="w-full h-32 bg-white/10 text-xs p-2 rounded border border-white/10 focus:outline-none" placeholder="例如：return '你刚刚说了：' + input;"></textarea>
+          </div>
+          <div className="flex items-center justify-end gap-2 mt-4">
+            <button onClick={onExit} className="text-xs px-3 py-1 rounded bg-white/10 border border-white/10">完成</button>
           </div>
         </div>
       );
@@ -415,7 +597,7 @@
       function saveAll(){ setSettings({...temp,temperature:tval}); setTheme(tTheme); }
 
       return (
-        <div className="grid grid-cols-1 gap-3 text-sm">
+        <div className="grid grid-cols-1 gap-3 text-sm p-3 rounded-2xl border border-white/10 bg-[#0b0b0f]/85">
           <div className="flex gap-1">
             <TabButton active={tab==='api'} onClick={()=>setTab('api')}>API</TabButton>
             <TabButton active={tab==='beauty'} onClick={()=>setTab('beauty')}>美化</TabButton>
@@ -494,23 +676,48 @@
     const TabButton=({active,onClick,children})=>(<button onClick={onClick} className={`px-3 py-1.5 rounded-lg border text-xs ${active?'bg-white/15 border-white/20':'bg-white/5 border-white/10 hover:bg-white/10'}`}>{children}</button>);
 
     /* LLM 简易调用 */
-    async function callLLM(settings,msgs){
-      const m=[]; if(settings.systemPrompt) m.push({role:'system',content:settings.systemPrompt});
-      for(const it of msgs){ m.push({role:it.role==='assistant'?'assistant':'user',content:it.text}); }
-      const url=(settings.apiBase||'https://api.openai.com').replace(/\/$/,'')+'/v1/chat/completions';
-      const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+settings.apiKey},body:JSON.stringify({model:settings.model,messages:m,temperature:settings.temperature??0.6})});
-      if(!res.ok) throw new Error('HTTP '+res.status);
-      const json=await res.json();
-      return (json?.choices?.[0]?.message?.content||'').trim()||'(空回复)';
+    async function callLLM(settings, msgs, worldbook) {
+      const m = [];
+      const systemPrompt = worldbook?.prompt || settings.systemPrompt;
+      if (systemPrompt) m.push({ role: 'system', content: systemPrompt });
+      for (const it of msgs) {
+        m.push({ role: it.role === 'assistant' ? 'assistant' : 'user', content: it.text });
+      }
+      const url = (settings.apiBase || 'https://api.openai.com').replace(/\/$/, '') + '/v1/chat/completions';
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + settings.apiKey
+        },
+        body: JSON.stringify({
+          model: settings.model,
+          messages: m,
+          temperature: settings.temperature ?? 0.6
+        })
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const json = await res.json();
+      return (json?.choices?.[0]?.message?.content || '').trim() || '(空回复)';
     }
-    function localBrain(s){ s=(s||'').toLowerCase(); if(s.includes('音乐')||s.includes('歌')) return '点开播放器, 先把第一首放起来。边听边说。'; if(s.includes('抱')||s.includes('累')||s.includes('难过')) return '过来, 抱一下。别逞强, 先喝口水。'; if(s.includes('老公')) return '我在。别乱想。今天想听什么风格?'; if(s.length<12) return '具体一点, 说说发生了什么。'; return '听到了, 给我 30 秒拼好思路再回你。'; }
+
+    function localBrain(s) {
+      s = (s || '').toLowerCase();
+      if (s.includes('音乐') || s.includes('歌')) return '点开播放器, 先把第一首放起来。边听边说。';
+      if (s.includes('抱') || s.includes('累') || s.includes('难过')) return '过来, 抱一下。别逞强, 先喝口水。';
+      if (s.includes('老公')) return '我在。别乱想。今天想听什么风格?';
+      if (s.length < 12) return '具体一点, 说说发生了什么。';
+      return '听到了, 给我 30 秒拼好思路再回你。';
+    }
 
     /* 冒烟测试 */
-    try{
-      console.assert(typeof uid()==='string' && uid().length>=3, 'uid ok');
-      console.assert(localBrain('音乐推荐').length>0, 'brain ok');
+    try {
+      console.assert(typeof uid() === 'string' && uid().length >= 3, 'uid ok');
+      console.assert(localBrain('音乐推荐').length > 0, 'brain ok');
       console.log('[MiniPhone] ready');
-    }catch(e){ showError(e.message) }
+    } catch (e) {
+      showError(e.message)
+    }
 
     ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
   </script>

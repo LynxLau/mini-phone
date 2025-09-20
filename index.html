@@ -3,651 +3,516 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-  <title>Mini Phone · v2-fixed</title>
-  <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-  <script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <title>Mini Phone</title>
+
+  <!-- deps -->
+  <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+
   <style>
-    :root { --accent:#7c5cff; }
-    html,body{height:100%; background:#0a0a0a;}
-    body{margin:0; display:grid; place-items:center; overflow:hidden;}
-    .phone-wrap{height:100dvh; aspect-ratio:9/19.5; max-height:900px; max-width:min(520px, 100vw); padding:16px;}
-    .panel{ background: rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.08); }
-    .btn{ background: rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.12); }
-    .btn:hover{ background: rgba(255,255,255,0.12); }
-    .toast{position:fixed; left:50%; transform:translateX(-50%); bottom:20px; padding:8px 12px; border-radius:10px; background:#d33; color:#fff; font-size:12px; z-index:9999;}
-    .bubble{word-break:break-word; white-space:pre-wrap;}
-    /* 玻璃风基底 */
-    .glass{ background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 8px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08); backdrop-filter: blur(16px); }
-    .dock{ background: rgba(0,0,0,0.40); border: 1px solid rgba(255,255,255,0.10); backdrop-filter: blur(16px); box-shadow: 0 8px 28px rgba(0,0,0,0.35); }
+    :root { --accent:#8e86ff; --glass:rgba(255,255,255,0.06); }
+    html, body { height: 100%; margin: 0; background:#000; color:#fff; overflow:hidden; }
+
+    /* 整机完整居中，网页不滚动 */
+    .viewport { height: 100vh; height: 100dvh; display:grid; place-items:center; }
+    #phone-frame { height:100%; aspect-ratio:420/844; max-width:100vw; position:relative; }
+
+    /* 错误条，防黑屏无提示 */
+    #errbox{position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:9999;display:none;
+      background:#b91c1c;color:#fff;border:1px solid #fecaca;border-radius:12px;padding:10px 12px;
+      font:12px/1.4 ui-sans-serif,system-ui}
   </style>
 </head>
 <body>
-  <div id="app"></div>
+  <div class="viewport">
+    <div id="phone-frame"><div id="root" class="w-full h-full"></div></div>
+  </div>
+  <div id="errbox"></div>
 
+  <script>
+    function showError(msg){
+      const box=document.getElementById('errbox');
+      box.textContent='页面报错：'+String(msg||'未知错误'); box.style.display='block';
+      setTimeout(()=>box.style.display='none',6000); console.error('[MiniPhone]', msg);
+    }
+    window.addEventListener('error', e=>showError(e.message));
+    window.addEventListener('unhandledrejection', e=>showError((e.reason&&e.reason.message)||e.reason));
+  </script>
+
+  <!-- app -->
   <script type="text/babel">
-  const {useState,useEffect,useMemo,useRef} = React;
+    const {useEffect,useMemo,useRef,useState} = React;
 
-  const uid=()=>Math.random().toString(36).slice(2,9);
-  const loadJSON=(k,f)=>{try{const r=localStorage.getItem(k);return r?JSON.parse(r):f}catch{return f}};
-  const saveJSON=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}};
-  const toast=(m)=>{const el=document.createElement('div');el.className='toast';el.textContent=m;document.body.appendChild(el);setTimeout(()=>el.remove(),2200)};
+    /* storage hook */
+    function useLocalStorage(key, initial){
+      const [state,setState] = React.useState(()=>{ try{ const raw=localStorage.getItem(key); return raw?JSON.parse(raw):initial }catch{ return initial }});
+      React.useEffect(()=>{ try{ localStorage.setItem(key, JSON.stringify(state)) }catch{} },[key,state]);
+      return [state,setState];
+    }
 
-  function App(){
-    const [theme,setTheme]=useState(()=>loadJSON('mp_theme',{
-      accent:'#7c5cff', bgType:'image', bgColor:'#0b0b0f', bgImage:'', blur:16, glass:true,
-      font:'Inter, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, Segoe UI, Roboto'
-    }));
-    const [apiProfiles,setApiProfiles]=useState(()=>loadJSON('mp_api_profiles',[
-      {id:uid(), name:'默认', apiBase:'https://api.skyi.cc/v1', apiKey:'', model:'gemini 2.5 pro', temperature:0.6}
-    ]));
-    const [activeProfileId,setActiveProfileId]=useState(()=>loadJSON('mp_active_profile', null));
-    const profile = useMemo(()=> apiProfiles.find(p=>p.id===activeProfileId) || apiProfiles[0], [apiProfiles,activeProfileId]);
+    /* utils */
+    const uid = ()=>Math.random().toString(36).slice(2,9);
+    const userMsg = t=>({id:uid(),role:'user',text:t});
+    const botMsg  = t=>({id:uid(),role:'assistant',text:t});
+    const fmtTime = d=>String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+    const fileToDataURL = f=>new Promise((res,rej)=>{ if(!f) return res(''); const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(f); });
 
-    const [characters,setCharacters]=useState(()=>loadJSON('mp_chars',[]));
-    const [screen,setScreen]=useState('home');
+    function phoneBgStyle(theme){
+      if(theme.bgType==='color') return {background:theme.bgColor, filter:'none'};
+      return {backgroundImage:`url(${theme.bgImage})`, backgroundSize:'cover', backgroundPosition:'center center', filter:'grayscale(1)'};
+    }
 
-    const [weather,setWeather]=useState(()=>loadJSON('mp_weather',{city:'上海', temp:'27°', icon:'☁️'}));
-    useEffect(()=>saveJSON('mp_theme',theme),[theme]);
-    useEffect(()=>saveJSON('mp_api_profiles',apiProfiles),[apiProfiles]);
-    useEffect(()=>saveJSON('mp_active_profile',activeProfileId),[activeProfileId]);
-    useEffect(()=>saveJSON('mp_chars',characters),[characters]);
-    useEffect(()=>saveJSON('mp_weather',weather),[weather]);
+    function App(){ return <MiniPhone/> }
 
-    return (
-      <div className="phone-wrap w-full">
-        <div className="relative w-full h-full rounded-[32px] border border-white/15 shadow-2xl overflow-hidden bg-black/80 text-white"
-             style={{fontFamily:theme.font, backgroundImage: theme.bgType==='image' && theme.bgImage ? `url(${theme.bgImage})` : 'none', backgroundSize:'cover', backgroundPosition:'center'}}>
+    function MiniPhone(){
+      const [theme,setTheme] = useLocalStorage('mp_theme', {
+        accent:'#8e86ff', bgType:'image', bgColor:'#0a0a0d', bgImage:'',
+        blur:8, glass:true,
+        font:'Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto'
+      });
+
+      const [playlist,setPlaylist] = useLocalStorage('mp_playlist', [{title:'Sleepy Cat',url:'',id:uid()}]);
+      const [currentId,setCurrentId] = useLocalStorage('mp_current', null);
+
+      const defaults={apiBase:'https://api.openai.com',apiKey:'',model:'',systemPrompt:'',characterName:'Valuri',avatar:'',temperature:0.6};
+      const [settings,setSettings] = useLocalStorage('mp_settings', defaults);
+      useEffect(()=>{ setSettings(prev=>({...defaults,...prev})) },[]);
+
+      const [aiMode,setAiMode] = useLocalStorage('mp_aiMode', true);
+      const [view,setView] = useState('home'); // home|chat|player|settings
+
+      /* 新增：消息列表/房间视图状态与数据 */
+      const [chats, setChats] = useLocalStorage('mp_chats', []); // [{id,name,msgs:[...]}]
+      const [chatView, setChatView] = useState({ mode: 'list', id: null }); // list|room
+
+      useEffect(()=>{ const r=document.documentElement.style;
+        r.setProperty('--accent', theme.accent);
+        r.setProperty('--glass', theme.glass?'rgba(255,255,255,0.06)':'rgba(255,255,255,0)'); },[theme]);
+
+      useEffect(()=>{ if(!currentId && playlist[0]) setCurrentId(playlist[0].id) },[currentId,playlist]);
+
+      const apiOn = Boolean(settings.apiKey && settings.model);
+
+      return (
+        <div className="w-full h-full" style={{fontFamily:theme.font}}>
           <div className="absolute inset-0" style={{backdropFilter:`blur(${theme.blur}px)`}}/>
-          <div className="absolute left-1/2 -translate-x-1/2 top-2 w-40 h-4 rounded-full bg-black/60 border border-white/10" />
-          <div className="absolute inset-0 flex flex-col">
-            {/* 顶部磨砂条 */}
-            <div className="p-3">
-              <div className="glass rounded-xl px-3 py-2 flex items-center justify-between">
-                <div className="text-xs text-white/80">{new Date().toTimeString().slice(0,5)}</div>
-                <div className="flex items-center gap-2">
-                  <select className="text-[11px] bg-black/50 border border-white/10 rounded px-2 py-1"
-                          value={profile?.id||''}
-                          onChange={e=>setActiveProfileId(e.target.value)}>
-                    {apiProfiles.map(p=><option key={p.id} value={p.id}>{p.name} · {p.model||'未设模型'}</option>)}
-                  </select>
-                  <button className="text-xs px-2 py-1 rounded btn" onClick={()=>setScreen('beauty')}>🎨</button>
-                </div>
-              </div>
-            </div>
+          <div className="relative z-10 w-full h-full">
+            <DeviceFrame phoneStyle={phoneBgStyle(theme)}>
+              <ScreenChrome apiOn={apiOn}/>
+              {view==='home' && <HomeScreen
+                playlist={playlist} setPlaylist={setPlaylist}
+                currentId={currentId} setCurrentId={setCurrentId}
+                onOpenPlayer={()=>setView('player')}
+                onOpenChat={()=>{ setView('chat'); setChatView({mode:'list',id:null}); }}
+                onOpenSettings={()=>setView('settings')}
+              />}
 
-            <div className="flex-1 overflow-auto px-4 pb-4 space-y-3">
-              {screen==='home' && <HomePage goto={setScreen} weather={weather} setWeather={setWeather}/>}
-              {screen==='chat' && <ChatPage characters={characters} setCharacters={setCharacters} profile={profile}/>}
-              {screen==='api' && <APIPage profiles={apiProfiles} setProfiles={setApiProfiles} activeId={activeProfileId} setActiveId={setActiveProfileId}/>}
-              {screen==='moments' && <MomentsPage/>}
-              {screen==='xhs' && <XHSPage/>}
-              {screen==='gallery' && <Placeholder title="相册"/>}
-              {screen==='beauty' && <BeautyPage theme={theme} setTheme={setTheme}/>}
-              {screen==='music' && <MusicPage/>}
-              {screen==='contacts' && <ContactsPage/>}
-            </div>
+              {view==='chat' && (
+                <Overlay
+                  title={chatView.mode==='list' ? '消息' : (chats.find(c=>c.id===chatView.id)?.name||'聊天')}
+                  onBack={()=>{
+                    if(chatView.mode==='room') setChatView({mode:'list',id:null});
+                    else setView('home');
+                  }}>
+                  {chatView.mode==='list'
+                    ? <ChatHome chats={chats} setChats={setChats} onOpen={(id)=>setChatView({mode:'room',id})}/>
+                    : <ChatRoom chat={chats.find(c=>c.id===chatView.id)}
+                                setChats={setChats}
+                                onExit={()=>setChatView({mode:'list',id:null})}
+                                settings={settings}/>}
+                </Overlay>
+              )}
 
-            <DockBar goto={setScreen}/>
+              {view==='player' && <Overlay title="播放器" onBack={()=>setView('home')}>
+                <PlayerCard playlist={playlist} setPlaylist={setPlaylist} currentId={currentId} setCurrentId={setCurrentId}/>
+              </Overlay>}
+
+              {view==='settings' && <Overlay title="设置" onBack={()=>setView('home')}>
+                <SettingsPanel settings={settings} setSettings={setSettings} theme={theme} setTheme={setTheme}/>
+              </Overlay>}
+            </DeviceFrame>
           </div>
         </div>
-      </div>
-    );
-  }
+      )
+    }
 
-  function HomePage({goto,weather,setWeather}){
-    const Tile = ({icon,label,onClick}) => (
-      <button onClick={onClick}
-              className="glass rounded-2xl h-[72px] w-[72px] grid place-items-center text-xs text-white/90">
-        <div className="text-xl">{icon}</div>
-        <div className="mt-1">{label}</div>
-      </button>
-    );
+    /* 机身外壳 */
+    function DeviceFrame({children, phoneStyle}){
+      return (
+        <div className="relative w-full h-full">
+          <div className="relative w-full h-full p-2 rounded-[44px] bg-gradient-to-b from-white/10 to-white/5 border border-white/10 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
+            <div className="absolute -left-1 top-24 h-16 w-[3px] rounded-full bg-white/15"></div>
+            <div className="absolute -left-1 top-44 h-10 w-[3px] rounded-full bg-white/15"></div>
+            <div className="absolute -right-1 top-36 h-24 w-[3px] rounded-full bg-white/15"></div>
 
-    return (
-      <div className="space-y-4">
-        {/* 上方三卡 */}
-        <div className="grid grid-cols-[84px,1fr,112px] gap-3">
-          {/* 联系人 */}
-          <button onClick={()=>goto('contacts')}
-                  className="glass rounded-3xl h-[128px] grid grid-rows-[1fr_auto] place-items-center">
-            <div className="text-2xl">👥</div>
-            <div className="text-xs opacity-90 -mt-2">联系人</div>
-          </button>
+            <div className="relative w-full h-full rounded-[36px] overflow-hidden ring-1 ring-white/10 bg-black/80" style={phoneStyle}>
+              <div className="pointer-events-none absolute inset-0" style={{backgroundImage:'radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px)',backgroundSize:'3px 3px',opacity:.35}}></div>
+              <div className="pointer-events-none absolute inset-0" style={{background:'radial-gradient(120% 120% at 50% 10%, transparent 30%, rgba(0,0,0,0.55) 85%)'}}></div>
 
-          {/* 播放器 */}
-          <div className="glass rounded-3xl h-[128px] p-3 relative overflow-hidden">
-            <div className="absolute right-3 top-3 text-[10px] opacity-70">
-              {localStorage.getItem('mp_active_profile') ? 'API ON' : 'API OFF'}
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="w-16 h-16 rounded-[22px] bg-gradient-to-br from-black/30 to-black/80 grid place-items-center">
-                <div className="w-10 h-10 rounded-full bg-black/70 grid place-items-center">
-                  <div className="w-1.5 h-1.5 bg-white/90 rounded-full"></div>
-                </div>
+              <div className="absolute inset-0 overflow-hidden">
+                {children}
               </div>
-              <div className="flex-1">
-                <div className="text-base font-semibold truncate">Sleepy Cat</div>
-                <div className="text-[11px] opacity-80 truncate">anemoia / crossing you</div>
-                <div className="mt-2 flex gap-2">
-                  <button onClick={()=>goto('music')} className="px-3 py-1.5 rounded bg-[var(--accent)] text-white text-xs">打开播放器</button>
-                  <button className="px-3 py-1.5 rounded bg-white/10 border border-white/10 text-xs">当前</button>
+
+              <div className="absolute left-1/2 -translate-x-1/2 top-0 h-7 w-40 bg-black rounded-b-2xl shadow-[0_6px_12px_rgba(0,0,0,0.6)]"></div>
+              <div className="absolute left-[calc(50%-56px)] top-2 w-2.5 h-2.5 rounded-full bg-zinc-700"></div>
+              <div className="absolute left-1/2 -translate-x-1/2 top-2 w-16 h-1.5 rounded bg-zinc-700"></div>
+              <div className="absolute left-1/2 -translate-x-1/2 bottom-2 w-24 h-1.5 rounded-full bg-white/40"></div>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    function ScreenChrome({apiOn}){
+      const [clock,setClock]=useState(()=>fmtTime(new Date()));
+      useEffect(()=>{const t=setInterval(()=>setClock(fmtTime(new Date())),1000);return()=>clearInterval(t)},[]);
+      return (
+        <div className="flex items-center justify-between px-4 pt-8 pb-2 text-xs text-white/80 select-none">
+          <span>{clock}</span>
+          <span className={`px-2 py-0.5 rounded-full ${apiOn?'bg-green-500/20 text-green-300':'bg-white/10'}`}>{apiOn?'API ON':'API OFF'}</span>
+        </div>
+      )
+    }
+
+    /* 首页：播放器放大+文案调整 */
+    function HomeScreen({playlist,setPlaylist,currentId,setCurrentId,onOpenPlayer,onOpenChat,onOpenSettings}){
+      const current=useMemo(()=>playlist.find(x=>x.id===currentId)||playlist[0],[playlist,currentId]);
+      return (
+        <div className="px-4 pb-6 flex flex-col gap-3">
+          <div className="rounded-3xl p-5 bg-white/5 border border-white/10 backdrop-blur shadow-xl">
+            <div className="flex items-center gap-5">
+              <VinylDisc spinning size="lg"/>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium truncate">{current?.title||'未命名曲目'}</div>
+                <div className="text-[11px] opacity-70 truncate">anemoia / crossing you</div>
+                <div className="mt-3 flex items-center gap-2">
+                  <button className="text-xs px-3 py-1 rounded bg-[var(--accent)] text-white" onClick={onOpenPlayer}>打开播放器</button>
+                  <button className="text-xs px-3 py-1 rounded bg-white/10 border border-white/10" onClick={()=>setCurrentId(current?.id||null)}>当前</button>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* 天气 */}
-          <button onClick={()=>{
-            const city = prompt('城市名', weather.city)||weather.city;
-            const temp = prompt('温度', weather.temp)||weather.temp;
-            const icon = prompt('图标(如 ☀️/⛅/🌧️)', weather.icon)||weather.icon;
-            setWeather({city,temp,icon});
-          }} className="glass rounded-3xl h-[128px] p-3 text-left">
-            <div className="text-[11px] opacity-75">天气</div>
-            <div className="mt-3 text-3xl leading-none">{weather.icon||'⛅'}</div>
-            <div className="mt-2 text-sm">{weather.city||'上海'} · {weather.temp||'27°'}</div>
-          </button>
+          <div className="grid grid-cols-2 gap-3">
+            <GlassCard className="h-28"/><GlassCard className="h-28"/>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3 py-1">
+            {[
+              {k:'music',label:'音乐',on:onOpenPlayer,emoji:'🎵'},
+              {k:'chat',label:'聊天',on:onOpenChat,emoji:'💬'},
+              {k:'set',label:'设置',on:onOpenSettings,emoji:'⚙️'},
+              {k:'photo',label:'相册',on:()=>{},emoji:'🖼️'},
+              {k:'note',label:'日记',on:()=>{},emoji:'📓'},
+              {k:'link',label:'微博',on:()=>{},emoji:'📣'},
+            ].map(it=>(<AppIcon key={it.k} label={it.label} onClick={it.on}>{it.emoji}</AppIcon>))}
+          </div>
+
+          <div className="mt-1 px-3 py-2 rounded-3xl bg-white/10 border border-white/10 backdrop-blur flex items-center justify-around">
+            <DockIcon label="音乐" onClick={onOpenPlayer}><span className="text-xl">🎵</span></DockIcon>
+            <DockIcon label="聊天" onClick={onOpenChat}><span className="text-xl">💬</span></DockIcon>
+            <DockIcon label="设置" onClick={onOpenSettings}><span className="text-xl">⚙️</span></DockIcon>
+          </div>
         </div>
-
-        {/* 六宫格 */}
-        <div className="grid grid-cols-3 gap-6">
-          <Tile icon="🟥" label="小红书" onClick={()=>goto('xhs')}/>
-          <Tile icon="📸" label="朋友圈" onClick={()=>goto('moments')}/>
-          <Tile icon="⚙️" label="设置" onClick={()=>goto('beauty')}/>
-          <Tile icon="🖼️" label="相册" onClick={()=>goto('gallery')}/>
-          <Tile icon="🎨" label="美化" onClick={()=>goto('beauty')}/>
-          <Tile icon="🔗" label="API"   onClick={()=>goto('api')}/>
-        </div>
-      </div>
-    );
-  }
-
-  function DockBar({goto}){
-    const Item=({icon,label,onClick})=>(
-      <button onClick={onClick} className="flex flex-col items-center gap-1">
-        <div className="w-14 h-14 rounded-2xl glass grid place-items-center text-xl">{icon}</div>
-        <div className="text-[11px] opacity-90">{label}</div>
-      </button>
-    );
-    return (
-      <div className="px-4 pb-5">
-        <div className="dock rounded-3xl p-3 grid grid-cols-3 gap-6">
-          <Item icon="🟥" label="小红书" onClick={()=>goto('xhs')}/>
-          <Item icon="📸" label="朋友圈" onClick={()=>goto('moments')}/>
-          <Item icon="⚙️" label="设置" onClick={()=>goto('beauty')}/>
-        </div>
-      </div>
-    );
-  }
-
-  /* ========= API、多JSON、聊天、记忆 ========= */
-  function APIPage({profiles,setProfiles,activeId,setActiveId}){
-    const [showNew,setShowNew]=useState(false);
-    const [temp,setTemp]=useState({name:'新档位', apiBase:'', apiKey:'', model:'', temperature:0.6});
-
-    async function testAPI(p){
-      try{
-        const r=await fetch((p.apiBase||'').replace(/\/$/,'')+'/models',{headers:{'Authorization':'Bearer '+(p.apiKey||'')}});
-        if(!r.ok) throw new Error('HTTP '+r.status);
-        toast('API 可用 ✅');
-      }catch(e){ toast('测试失败：'+(e.message||e)) }
+      )
     }
-    async function fetchModels(p, onDone){
-      try{
-        const r=await fetch((p.apiBase||'').replace(/\/$/,'')+'/models',{headers:{'Authorization':'Bearer '+(p.apiKey||'')}});
-        if(!r.ok) throw new Error('HTTP '+r.status);
-        const d=await r.json(); const list=(d?.data||d?.models||[]).map(x=>x.id||x.name).filter(Boolean);
-        onDone && onDone(list);
-      }catch(e){ toast('获取失败：'+(e.message||e)) }
+    const GlassCard=({className=''})=><div className={`rounded-3xl bg-white/5 border border-white/10 ${className}`}></div>;
+
+    /* 唱片支持大号 */
+    function VinylDisc({spinning,size}) {
+      const cls = size === 'lg' ? 'w-32 h-32' : 'w-28 h-28';
+      const inner = size === 'lg' ? 'w-28 h-28' : 'w-24 h-24';
+      return (
+        <div className={`relative ${cls}`}>
+          <div className="absolute inset-0 rounded-2xl bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.08),transparent)] border border-white/10"></div>
+          <div className={`absolute right-[-14px] top-1/2 -translate-y-1/2 ${inner} rounded-full grid place-items-center ${spinning?'animate-spin':''}`}
+               style={{animationDuration:'6s',background:'radial-gradient(circle,#0c0c0f 25%,#15151a 26%,#0c0c0f 40%,#15151a 60%,#0c0c0f 75%)'}}>
+            <div className="w-3 h-3 rounded-full bg-white/80"></div>
+          </div>
+        </div>
+      );
     }
 
-    return (
-      <div className="space-y-3">
-        <Header title="API 管理">
-          <button className="btn px-2 py-1 rounded text-xs" onClick={()=>setShowNew(true)}>＋</button>
-        </Header>
+    function AppIcon({children,label,onClick}){
+      return (
+        <button onClick={onClick} className="group flex flex-col items-center gap-1">
+          <div className="w-16 h-16 rounded-2xl bg-white/10 border border-white/10 grid place-items-center group-active:scale-95 transition-transform">
+            <span className="text-xl">{children}</span>
+          </div>
+          <div className="text-[11px] opacity-75">{label}</div>
+        </button>
+      )
+    }
+    function DockIcon({children,label,onClick}){
+      return (
+        <button onClick={onClick} className="group flex flex-col items-center gap-1 px-3 py-1">
+          <div className="w-12 h-12 rounded-2xl bg-white/10 border border-white/10 grid place-items-center group-active:scale-95 transition-transform">{children}</div>
+          <div className="text-[11px] opacity-75">{label}</div>
+        </button>
+      )
+    }
 
-        <div className="space-y-2">
-          {profiles.map(p=>(
-            <div key={p.id} className={`p-3 rounded-xl border ${activeId===p.id?'border-[var(--accent)]/70 bg-white/10':'border-white/10 bg-white/5'}`}>
-              <div className="flex items-center justify-between gap-2">
-                <input className="text-sm bg-transparent outline-none" value={p.name} onChange={e=>setProfiles(ps=>ps.map(x=>x.id===p.id?{...x,name:e.target.value}:x))}/>
-                <div className="flex items-center gap-2">
-                  <label className="text-[11px] flex items-center gap-1"><input type="radio" checked={activeId===p.id} onChange={()=>setActiveId(p.id)}/> 使用</label>
-                  <button className="btn px-2 py-1 rounded text-xs" onClick={()=>setProfiles(ps=>ps.filter(x=>x.id!==p.id))}>删</button>
-                </div>
-              </div>
-              <div className="grid grid-cols-1 gap-2 mt-2 text-xs">
-                <Row label="API Base"><input className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10" value={p.apiBase} onChange={e=>setProfiles(ps=>ps.map(x=>x.id===p.id?{...x,apiBase:e.target.value}:x))}/></Row>
-                <Row label="API Key"><input type="password" className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10" value={p.apiKey} onChange={e=>setProfiles(ps=>ps.map(x=>x.id===p.id?{...x,apiKey:e.target.value}:x))}/></Row>
-                <Row label="模型">
-                  <input className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10" value={p.model} onChange={e=>setProfiles(ps=>ps.map(x=>x.id===p.id?{...x,model:e.target.value}:x))}/>
-                  <button className="btn px-2 py-1 rounded" onClick={()=>fetchModels(p, list=>{
-                    const m=prompt('选择模型（手输或复制）', list.join(', '))||p.model;
-                    setProfiles(ps=>ps.map(x=>x.id===p.id?{...x,model:m}:x));
-                  })}>取模型</button>
-                  <button className="btn px-2 py-1 rounded" onClick={()=>testAPI(p)}>测试</button>
-                </Row>
-                <Row label="温度"><input type="number" step="0.1" min="0" max="2" className="w-20 bg-white/10 rounded px-2 py-1 border border-white/10" value={p.temperature} onChange={e=>setProfiles(ps=>ps.map(x=>x.id===p.id?{...x,temperature:+e.target.value||0}:x))}/></Row>
+    /* 覆盖层页 */
+    function Overlay({title,children,onBack}){
+      return (
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm">
+          <div className="h-full flex flex-col">
+            <div className="h-10 px-4 flex items-center justify-between">
+              <button onClick={onBack} className="text-xs px-2 py-1 rounded bg-white/10 border border-white/10">返回</button>
+              <div className="text-sm opacity-90">{title}</div>
+              <div className="w-10"></div>
+            </div>
+            <div className="flex-1 p-3 overflow-auto" style={{WebkitOverflowScrolling:'touch'}}>
+              <div className="rounded-2xl border border-white/10 bg-[#0b0b0f]/85 p-3 min-h-full">
+                {children}
               </div>
             </div>
-          ))}
+          </div>
         </div>
-
-        {showNew && (
-          <Modal title="新增 API 档位" onClose={()=>setShowNew(false)}>
-            <div className="space-y-2 text-sm">
-              <Row label="名称"><input className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10" value={temp.name} onChange={e=>setTemp({...temp,name:e.target.value})}/></Row>
-              <Row label="API Base"><input className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10" value={temp.apiBase} onChange={e=>setTemp({...temp,apiBase:e.target.value})}/></Row>
-              <Row label="API Key"><input type="password" className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10" value={temp.apiKey} onChange={e=>setTemp({...temp,apiKey:e.target.value})}/></Row>
-              <Row label="模型"><input className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10" value={temp.model} onChange={e=>setTemp({...temp,model:e.target.value})}/></Row>
-              <Row label="温度"><input type="number" step="0.1" min="0" max="2" className="w-20 bg-white/10 rounded px-2 py-1 border border-white/10" value={temp.temperature} onChange={e=>setTemp({...temp,temperature:+e.target.value||0})}/></Row>
-              <div className="flex justify-end gap-2 mt-2">
-                <button className="btn px-3 py-1.5 rounded" onClick={()=>setShowNew(false)}>取消</button>
-                <button className="px-3 py-1.5 rounded bg-[var(--accent)] text-white" onClick={()=>{
-                  const p={...temp, id:uid()}; setProfiles(ps=>[...ps,p]); setShowNew(false);
-                }}>保存</button>
-              </div>
-            </div>
-          </Modal>
-        )}
-      </div>
-    );
-  }
-
-  function ChatPage({characters,setCharacters,profile}){
-    const [selectedId,setSelectedId]=useState(()=>characters[0]?.id||null);
-    const selected = useMemo(()=>characters.find(c=>c.id===selectedId)||null,[characters,selectedId]);
-
-    const [chatMode,setChatMode]=useState('online');
-    const [burstMin,setBurstMin]=useState(2), [burstMax,setBurstMax]=useState(4);
-    const storageKey = selected? `mp_thread_${selected.id}` : null;
-    const [msgs,setMsgs]=useState(()=> storageKey? loadJSON(storageKey,[]) : []);
-    useEffect(()=>{ if(storageKey) saveJSON(storageKey,msgs) },[storageKey,msgs]);
-
-    const [roleData,setRoleData]=useState({
-      roleCard:null, worldbook:null, preset:null, regex:null,
-      extraList:[], memoryLong:'', memoryForever:'', temperature:0.6, modelOverride:''
-    });
-    useEffect(()=>{
-      if(!selected) return;
-      const saved = loadJSON('mp_role_'+selected.id, null);
-      if(saved) setRoleData(saved); else setRoleData({
-        roleCard:null, worldbook:null, preset:null, regex:null, extraList:[],
-        memoryLong:'', memoryForever:'', temperature:0.6, modelOverride:''
-      });
-      setMsgs(loadJSON(`mp_thread_${selected.id}`,[]));
-    },[selectedId]);
-    useEffect(()=>{ if(selected) saveJSON('mp_role_'+selected.id, roleData) },[selected,roleData]);
-
-    function buildSystem(){
-      const hard = [
-        '【最高原则】严格按「角色卡」「世界书」「预设」「正则」「额外JSON」「长期记忆」「永久记忆」约束回复；禁止 OOC；不得复述设定原文；冲突时以这些资源为准，越界请求直接拒绝。',
-        '不暴露系统或“我看了设定”等元叙述。'
-      ].join('\n');
-      const style = chatMode==='online'
-        ? `【对话形态：线上】即时通讯；一次输出 ${burstMin}-${burstMax} 条短句，使用 \\n---\\n 分隔；每条≤140字。`
-        : `【对话形态：线下】剧情长文可含（内心活动）；单条≤900字。`;
-      const pack = x => x ? JSON.stringify(x) : '';
-      return [
-        hard, style,
-        roleData.roleCard?('【角色卡】\n'+pack(roleData.roleCard)):'',
-        roleData.worldbook?('【世界书】\n'+pack(roleData.worldbook)):'',
-        roleData.preset?('【预设】\n'+pack(roleData.preset)):'',
-        roleData.regex?('【正则】\n'+pack(roleData.regex)):'',
-        roleData.extraList?.length ? ('【额外JSON】\n'+pack(roleData.extraList)) : '',
-        roleData.memoryForever?('【永久记忆】\n'+roleData.memoryForever):'',
-        roleData.memoryLong?('【长期记忆】\n'+roleData.memoryLong):'',
-      ].filter(Boolean).join('\n\n');
+      )
     }
 
-    async function chatComplete({ base, key, model, temperature, system, history, maxTokens }) {
-      const b = (base||'').replace(/\/$/,''); const headers = { 'Content-Type':'application/json','Authorization':'Bearer '+key };
-      const r = await fetch(b + '/chat/completions', {
-        method:'POST', headers,
-        body: JSON.stringify({ model, temperature, max_tokens:maxTokens, messages:[{role:'system',content:system}, ...history] })
-      });
-      if(!r.ok && r.status===404){
-        const r2 = await fetch(b + '/completions', {
-          method:'POST', headers,
-          body: JSON.stringify({
-            model, temperature, max_tokens:maxTokens,
-            prompt: `System:\n${system}\n\n` + history.map(m => `${m.role==='user'?'User':'Assistant'}: ${m.content}`).join('\n') + '\nAssistant:'
-          })
-        });
-        if(!r2.ok) throw new Error('HTTP '+r2.status);
-        const d2 = await r2.json(); return d2?.choices?.[0]?.text ?? '[empty]';
+    /* 播放器 */
+    function PlayerCard({playlist,setPlaylist,currentId,setCurrentId}){
+      const current=useMemo(()=>playlist.find(x=>x.id===currentId)||playlist[0],[playlist,currentId]);
+      useEffect(()=>{ if(!current && playlist.length) setCurrentId(playlist[0].id) },[current,playlist,setCurrentId]);
+      return (
+        <div className="flex flex-col gap-3">
+          <div className="text-sm font-medium">播放器</div>
+          {current?(
+            <div className="flex flex-col gap-2">
+              <div className="text-xs opacity-80 truncate">当前: {current.title||'未命名曲目'}</div>
+              <audio controls src={current.url||undefined} className="w-full"></audio>
+            </div>
+          ):(<div className="text-xs opacity-70">暂无曲目</div>)}
+          <PlaylistEditor playlist={playlist} setPlaylist={setPlaylist} currentId={currentId} setCurrentId={setCurrentId}/>
+        </div>
+      )
+    }
+    function PlaylistEditor({playlist,setPlaylist,currentId,setCurrentId}){
+      const [title,setTitle]=useState(''); const [url,setUrl]=useState('');
+      return (
+        <div className="flex flex-col gap-2">
+          <div className="flex gap-2">
+            <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="曲名" className="flex-1 text-sm bg-white/10 rounded px-2 py-1 border border-white/10 focus:outline-none"/>
+            <input value={url} onChange={e=>setUrl(e.target.value)} placeholder="音频 URL" className="flex-[2] text-sm bg-white/10 rounded px-2 py-1 border border-white/10 focus:outline-none"/>
+            <button onClick={()=>{ if(!url)return; const track={title:title||(url.split('/').pop()??'未命名曲目'),url,id:uid()}; setPlaylist([...playlist,track]); setTitle(''); setUrl(''); if(!currentId) setCurrentId(track.id); }} className="text-sm px-3 py-1 rounded bg-[var(--accent)]/90 hover:bg-[var(--accent)] text-white">添加</button>
+          </div>
+          <div className="max-h-40 overflow-auto flex flex-col gap-1">
+            {playlist.map(track=>(
+              <div key={track.id} className={`group flex items-center gap-2 text-sm bg-white/5 border border-white/10 rounded p-2 ${currentId===track.id?'ring-1 ring-[var(--accent)]/70':''}`}>
+                <button onClick={()=>setCurrentId(track.id)} className="text-xs px-2 py-1 rounded bg-white/10 hover:bg-white/15">播放</button>
+                <div className="flex-1 truncate">{track.title||'未命名曲目'}</div>
+                <button onClick={()=>setPlaylist(playlist.filter(x=>x.id!==track.id))} className="opacity-60 hover:opacity-100 text-xs">删除</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )
+    }
+
+    /* 消息列表页 */
+    function ChatHome({chats, setChats, onOpen}) {
+      function addChat() {
+        const name = prompt('给聊天取个名字：');
+        if (!name) return;
+        const id = uid();
+        setChats([...chats, { id, name, msgs: [botMsg('新会话，开始聊天吧。')] }]);
+        onOpen(id);
       }
-      if(!r.ok) throw new Error('HTTP '+r.status);
-      const d = await r.json(); return d?.choices?.[0]?.message?.content ?? '[empty]';
+      return (
+        <div className="flex flex-col h-full">
+          <div className="flex items-center justify-end gap-2 mb-2">
+            <button onClick={addChat} className="text-xs px-2 py-1 rounded bg-white/10 border border-white/10">＋ 新建</button>
+          </div>
+
+          <div className="flex-1 rounded-xl border border-white/10 bg-white/5 overflow-auto" style={{WebkitOverflowScrolling:'touch'}}>
+            {chats.length === 0 ? (
+              <div className="h-full grid place-items-center text-sm opacity-70 p-6">
+                点击右上角「＋」或长按头像添加聊天
+              </div>
+            ) : (
+              <ul className="divide-y divide-white/10">
+                {chats.map(c => {
+                  const last = c.msgs?.[c.msgs.length-1]?.text || '（无消息）';
+                  return (
+                    <li key={c.id}>
+                      <button onClick={()=>onOpen(c.id)} className="w-full text-left px-3 py-3 hover:bg-white/5 flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-full bg-white/10 grid place-items-center text-xs">💬</div>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-medium truncate">{c.name}</div>
+                          <div className="text-xs opacity-70 truncate">{last}</div>
+                        </div>
+                        <div className="text-[10px] opacity-60">进入</div>
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
+        </div>
+      );
     }
 
-    async function sendText(text){
-      if(!text?.trim()) return;
-      const history=[...msgs,{id:uid(),role:'user',content:text}];
-      setMsgs(history);
-      const apiBase=profile?.apiBase, apiKey=profile?.apiKey, model=roleData.modelOverride || profile?.model;
-      if(!apiBase||!apiKey||!model){ toast('API 不完整'); return; }
-      const maxChars = chatMode==='online'?140:900;
-      const approxTokens = Math.max(64, Math.min(1024, Math.round(maxChars*1.8)));
-      const system=buildSystem();
-      try{
-        let out = await chatComplete({
-          base:apiBase, key:apiKey, model, temperature:Number.isFinite(+roleData.temperature)?+roleData.temperature:(+profile.temperature||0.6),
-          system, history: history.map(({role,content})=>({role,content})), maxTokens: approxTokens
-        });
-        if(chatMode==='online'){
-          const parts = String(out).split(/\n---\n/).map(s=>s.trim()).filter(Boolean);
-          const n=Math.max(burstMin, Math.min(burstMax, parts.length||burstMin));
-          setMsgs(m=>{const t=[...m]; for(let i=0;i<n;i++) t.push({id:uid(),role:'assistant',content:parts[i]||''}); return t;});
-        }else{
-          setMsgs(m=>[...m,{id:uid(),role:'assistant',content:String(out).trim()}]);
+    /* 聊天房间：消息写回对应会话 */
+    function ChatRoom({chat, setChats, onExit, settings}) {
+      const [input, setInput] = React.useState('');
+      const messages = chat?.msgs || [];
+
+      function updateMsgs(newMsgs){
+        setChats(cs => cs.map(c => c.id===chat.id ? {...c, msgs:newMsgs} : c));
+      }
+
+      async function send(){
+        const text=input.trim(); if(!text) return;
+        const newMsgs=[...messages, userMsg(text)];
+        updateMsgs(newMsgs); setInput('');
+        if (settings?.apiKey && settings?.model){
+          try{
+            const reply = await callLLM(settings, newMsgs);
+            updateMsgs([...newMsgs, botMsg(reply)]);
+          }catch{
+            updateMsgs([...newMsgs, botMsg(localBrain(text))]);
+          }
+        } else {
+          updateMsgs([...newMsgs, botMsg(localBrain(text))]);
         }
-      }catch(e){ toast('请求失败：'+(e.message||e)) }
+      }
+
+      return (
+        <div className="flex flex-col h-full">
+          <div className="flex-1 overflow-auto p-2 space-y-2" style={{WebkitOverflowScrolling:'touch'}}>
+            {messages.map(m=>(
+              <div key={m.id}
+                   className={`max-w-[86%] md:max-w-[70%] rounded-2xl px-3 py-2 text-sm leading-relaxed shadow border ${
+                     m.role==='user'
+                       ? 'self-end bg-[var(--accent)]/90 text-white border-[var(--accent)]/60 ml-auto'
+                       : 'self-start bg-white/5 text-white/90 border-white/10'
+                   }`}>
+                {m.text}
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center gap-2 p-2 border-t border-white/10">
+            <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=> e.key==='Enter' && (e.shiftKey?null:send())}
+                   placeholder="说点什么…" className="flex-1 bg-white/10 rounded-xl px-3 py-2 text-sm border border-white/10 focus:outline-none"/>
+            <button onClick={send} className="px-3 py-2 rounded-xl bg-[var(--accent)] text-white text-sm hover:opacity-90">发送</button>
+          </div>
+        </div>
+      );
     }
 
-    async function genLongMemory(){
-      const apiBase=profile?.apiBase, apiKey=profile?.apiKey, model=roleData.modelOverride || profile?.model;
-      if(!apiBase||!apiKey||!model){ toast('API 不完整'); return; }
-      const recent = msgs.slice(-40).map(m=>`${m.role==='user'?'用户':'角色'}:${m.content||'[媒体]'}`).join('\n');
-      const sys='只输出 3-8 条要点，涵盖稳定关系/性格/边界/目标与禁忌/已确认事实。避免剧情复述。中文。';
-      const prompt='从以下对话生成“长期记忆要点”列表：\n'+recent;
-      try{
-        const out = await chatComplete({
-          base:apiBase,key:apiKey,model,temperature:0.2,maxTokens:400,
-          system:sys, history:[{role:'user',content:prompt}]
-        });
-        setRoleData(d=>({...d, memoryLong:String(out).trim()}));
-        toast('已写入长期记忆');
-      }catch(e){ toast('生成失败：'+(e.message||e)) }
-    }
+    /* 设置（4 tab） */
+    function SettingsPanel({settings,setSettings,theme,setTheme}){
+      const [tab,setTab]=useState('api');
+      const [temp,setTemp]=useState(()=>({apiBase:'https://api.openai.com',apiKey:'',model:'',systemPrompt:'',characterName:'Valuri',avatar:'',temperature:0.6,...settings}));
+      const [tTheme,setTTheme]=useState(theme);
+      const tval = Number.isFinite(+temp.temperature)?+temp.temperature:0.6;
 
-    return (
-      <div className="space-y-3">
-        <Header title="聊天">
-          <div className="flex items-center gap-2">
-            <select className="text-xs bg-white/10 border border-white/10 rounded px-2 py-1"
-                    value={selectedId||''} onChange={e=>setSelectedId(e.target.value)}>
-              <option value="" disabled>选择角色</option>
-              {characters.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-            <button className="btn px-2 py-1 rounded text-xs" onClick={()=>{
-              const name=prompt('角色昵称'); if(!name) return;
-              const c={id:uid(), name}; setCharacters([...characters,c]); setSelectedId(c.id);
-            }}>＋</button>
-            {selected && <RoleConfig roleData={roleData} setRoleData={setRoleData}/>}
+      function saveAll(){ setSettings({...temp,temperature:tval}); setTheme(tTheme); }
+
+      return (
+        <div className="grid grid-cols-1 gap-3 text-sm">
+          <div className="flex gap-1">
+            <TabButton active={tab==='api'} onClick={()=>setTab('api')}>API</TabButton>
+            <TabButton active={tab==='beauty'} onClick={()=>setTab('beauty')}>美化</TabButton>
+            <TabButton active={tab==='font'} onClick={()=>setTab('font')}>字体</TabButton>
+            <TabButton active={tab==='background'} onClick={()=>setTab('background')}>手机背景</TabButton>
           </div>
-        </Header>
 
-        {selected ? (
-          <div className="panel rounded-2xl border border-white/10 overflow-hidden">
-            <div className="h-[60vh] flex flex-col">
-              <ChatList items={msgs}/>
-              <div className="sticky bottom-0 border-t border-white/10 bg-black/60 backdrop-blur px-3 py-2">
-                <Composer onSend={sendText}/>
-                <div className="mt-2 flex items-center gap-3 text-[11px] opacity-80">
-                  <label><input type="radio" checked={chatMode==='online'} onChange={()=>setChatMode('online')}/> 线上</label>
-                  <label><input type="radio" checked={chatMode==='offline'} onChange={()=>setChatMode('offline')}/> 线下</label>
-                  {chatMode==='online' && (
-                    <>
-                      <span>每次</span>
-                      <input className="w-10 bg-white/10 border border-white/10 rounded px-1" type="number" min="1" max="5" value={burstMin} onChange={e=>setBurstMin(+e.target.value||2)}/>
-                      <span>到</span>
-                      <input className="w-10 bg-white/10 border border-white/10 rounded px-1" type="number" min="1" max="5" value={burstMax} onChange={e=>setBurstMax(+e.target.value||4)}/>
-                    </>
-                  )}
-                  <button className="btn px-2 py-1 rounded ml-auto" onClick={genLongMemory}>生成长期记忆</button>
-                </div>
+          {tab==='api' && (
+            <div className="rounded-xl border border-white/10 p-3 bg-white/5 space-y-3">
+              <Row label="角色名"><input value={temp.characterName} onChange={e=>setTemp({...temp,characterName:e.target.value})} className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10 focus:outline-none" placeholder="例如 Valuri"/></Row>
+              <Row label="头像 URL"><input value={temp.avatar} onChange={e=>setTemp({...temp,avatar:e.target.value})} className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10 focus:outline-none" placeholder="http(s)://..."/></Row>
+              <Row label="API Base"><input value={temp.apiBase} onChange={e=>setTemp({...temp,apiBase:e.target.value})} className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10 focus:outline-none" placeholder="https://api.openai.com"/></Row>
+              <Row label="API Key"><input type="password" value={temp.apiKey} onChange={e=>setTemp({...temp,apiKey:e.target.value})} className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10 focus:outline-none" placeholder="sk-... 本地保存"/></Row>
+              <Row label="Model"><input value={temp.model} onChange={e=>setTemp({...temp,model:e.target.value})} className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10 focus:outline-none" placeholder="gpt-4o-mini 或其他"/></Row>
+              <div className="flex items-center gap-3">
+                <label className="text-xs opacity-80">Temperature</label>
+                <input type="range" min="0" max="2" step="0.1" value={tval} onChange={e=>setTemp({...temp,temperature:+e.target.value})}/>
+                <span className="text-xs opacity-70 w-10">{tval.toFixed(1)}</span>
               </div>
+              <label className="text-xs opacity-80">System Prompt</label>
+              <textarea value={temp.systemPrompt} onChange={e=>setTemp({...temp,systemPrompt:e.target.value})} className="bg-white/10 rounded-lg px-3 py-2 border border-white/10 focus:outline-none min-h-[88px]"></textarea>
             </div>
-          </div>
-        ) : (
-          <div className="panel rounded-2xl p-6 text-sm">先创建一个角色吧。</div>
-        )}
-      </div>
-    );
-  }
-
-  function ChatList({items}){
-    const ref=useRef(null);
-    useEffect(()=>{ const el=ref.current; if(!el) return;
-      const nearBottom=el.scrollHeight-el.scrollTop-el.clientHeight<120; if(nearBottom) el.scrollTop=el.scrollHeight;
-    },[items]);
-    return (
-      <div ref={ref} className="flex-1 min-h-0 overflow-auto px-3 py-3 space-y-3">
-        {items.map(m=>(
-          <div key={m.id} className={`flex ${m.role==='user'?'justify-end':'justify-start'}`}>
-            {m.role!=='user' && <div className="w-7 h-7 rounded-full bg-white/20 mr-2 overflow-hidden"><div className="w-full h-full grid place-items-center">🤖</div></div>}
-            <div className={`max-w-[76%] px-3 py-2 rounded-2xl text-sm leading-snug border bubble ${m.role==='user'?'bg-[var(--accent)] text-white':'bg-white/90 text-black/90'}`} style={{borderColor: m.role==='user'?'rgba(124,92,255,.6)':'#e5e7eb'}}>
-              {m.content}
-            </div>
-            {m.role==='user' && <div className="w-7 h-7 rounded-full bg-white/20 ml-2 overflow-hidden"><div className="w-full h-full grid place-items-center">👤</div></div>}
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  function Composer({onSend}){
-    const [v,setV]=useState('');
-    return (
-      <div className="flex items-center gap-2">
-        <button className="btn px-2 py-2 rounded">📷</button>
-        <button className="btn px-2 py-2 rounded">🖼️</button>
-        <button className="btn px-2 py-2 rounded">🙂</button>
-        <button className="btn px-2 py-2 rounded">¥</button>
-        <button className="btn px-2 py-2 rounded">🎤</button>
-        <button className="btn px-2 py-2 rounded">☎️</button>
-        <button className="btn px-2 py-2 rounded">📎</button>
-        <button className="btn px-2 py-2 rounded">📍</button>
-        <input className="flex-1 bg-white/95 text-black rounded-xl px-3 py-2 text-sm border border-white/60 focus:outline-none"
-               placeholder="输入消息…" value={v} onChange={e=>setV(e.target.value)}
-               onKeyDown={e=>{ if(e.key==='Enter' && !e.shiftKey){ onSend(v); setV(''); }}}/>
-        <button className="px-3 py-2 rounded-xl bg-[var(--accent)] text-white text-sm" onClick={()=>{onSend(v); setV('')}}>发送</button>
-      </div>
-    );
-  }
-
-  function RoleConfig({roleData,setRoleData}){
-    const [open,setOpen]=useState(false);
-    return (
-      <>
-        <button className="btn px-2 py-1 rounded text-xs" onClick={()=>setOpen(true)}>角色设置</button>
-        {open && (
-          <Modal title="角色设置" onClose={()=>setOpen(false)}>
-            <div className="space-y-3 text-sm">
-              {[
-                ['角色卡','roleCard'],
-                ['世界书','worldbook'],
-                ['预设(JSON)','preset'],
-                ['正则(JSON)','regex'],
-              ].map(([label,key])=>(
-                <Row key={key} label={label}>
-                  <UploadJSON onLoad={obj=>setRoleData(d=>({...d,[key]:obj}))}/>
-                  <textarea className="flex-1 bg-black/50 rounded px-2 py-1 border border-white/10 min-h-[60px] font-mono text-xs"
-                            placeholder={'粘贴 '+label+' JSON'} value={roleData[key]?JSON.stringify(roleData[key],null,2):''}
-                            onChange={e=>{try{setRoleData(d=>({...d,[key]:JSON.parse(e.target.value)}))}catch{}}}/>
-                </Row>
-              ))}
-              <div className="rounded-lg border border-white/10 p-2">
-                <div className="flex items-center justify-between">
-                  <div className="text-xs opacity-80">额外 JSON（可多份）</div>
-                  <UploadJSON onLoad={obj=>setRoleData(d=>({...d, extraList:[...d.extraList, obj]}))}/>
-                </div>
-                <div className="mt-2 space-y-2">
-                  {(roleData.extraList||[]).map((x,i)=>(
-                    <div key={i} className="flex items-center gap-2">
-                      <div className="text-[11px] opacity-70">#{i+1}</div>
-                      <textarea className="flex-1 bg-black/50 rounded px-2 py-1 border border-white/10 min-h-[60px] font-mono text-xs"
-                                value={JSON.stringify(x,null,2)}
-                                onChange={e=>{try{
-                                  const obj=JSON.parse(e.target.value);
-                                  setRoleData(d=>{const arr=[...d.extraList]; arr[i]=obj; return {...d,extraList:arr};});
-                                }catch{}}}/>
-                      <button className="btn px-2 py-1 rounded text-xs" onClick={()=>{
-                        setRoleData(d=>({...d, extraList: d.extraList.filter((_,j)=>j!==i)}));
-                      }}>删</button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <Row label="长期记忆"><textarea className="flex-1 bg-black/50 rounded px-2 py-1 border border-white/10 min-h-[72px]" value={roleData.memoryLong} onChange={e=>setRoleData(d=>({...d,memoryLong:e.target.value}))}/></Row>
-              <Row label="永久记忆"><textarea className="flex-1 bg-black/50 rounded px-2 py-1 border border-white/10 min-h-[72px]" value={roleData.memoryForever} onChange={e=>setRoleData(d=>({...d,memoryForever:e.target.value}))}/></Row>
-              <Row label="模型覆盖"><input className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10" value={roleData.modelOverride} onChange={e=>setRoleData(d=>({...d,modelOverride:e.target.value}))}/></Row>
-              <Row label="温度"><input type="number" step="0.1" min="0" max="2" className="w-20 bg-white/10 rounded px-2 py-1 border border-white/10" value={roleData.temperature} onChange={e=>setRoleData(d=>({...d,temperature:+e.target.value||0}))}/></Row>
-            </div>
-          </Modal>
-        )}
-      </>
-    );
-  }
-
-  function MomentsPage(){
-    const [posts,setPosts]=useState(()=>loadJSON('mp_moments',[]));
-    useEffect(()=>saveJSON('mp_moments',posts),[posts]);
-    const [text,setText]=useState('');
-    return (
-      <div className="space-y-3">
-        <Header title="朋友圈">
-          <button className="btn px-2 py-1 rounded text-xs" onClick={()=>{
-            setPosts([{id:uid(), text, time:Date.now()},...posts]); setText('');
-          }}>发布</button>
-        </Header>
-        <div className="panel rounded-2xl p-2">
-          <input className="w-full bg-white/10 rounded px-2 py-2 text-sm border border-white/10" placeholder="写点什么…" value={text} onChange={e=>setText(e.target.value)}/>
-        </div>
-        <div className="space-y-2 max-h-[62vh] overflow-auto">
-          {posts.map(p=>(
-            <div key={p.id} className="panel rounded-2xl p-3">
-              <div className="text-xs opacity-70">{new Date(p.time).toLocaleString()}</div>
-              <div className="mt-1 text-sm leading-snug whitespace-pre-wrap">{p.text}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  function XHSPage(){
-    const [url,setUrl]=useState('https://www.xiaohongshu.com/explore');
-    const [embedOk,setEmbedOk]=useState(true);
-    return (
-      <div className="space-y-3">
-        <Header title="小红书"/>
-        <div className="panel rounded-2xl p-3 space-y-2">
-          <div className="flex gap-2">
-            <input className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10 text-sm" value={url} onChange={e=>setUrl(e.target.value)}/>
-            <button className="btn px-3 py-1.5 rounded text-sm" onClick={()=>{
-              try{
-                const f=document.getElementById('xhs_iframe'); if(f) f.src=url; setEmbedOk(true);
-                setTimeout(()=>{ if(!f || !f.contentWindow){ window.open(url,'_blank'); setEmbedOk(false); }},1200);
-              }catch{ window.open(url,'_blank'); setEmbedOk(false); }
-            }}>打开</button>
-          </div>
-          {embedOk ? <iframe id="xhs_iframe" title="xhs" src={url} className="w-full h-[64vh] rounded-xl border border-white/10"></iframe>
-                   : <div className="text-xs opacity-80">已在新窗口打开。</div>}
-        </div>
-      </div>
-    );
-  }
-
-  function MusicPage(){
-    const [audioUrl,setAudioUrl]=useState('');
-    return (
-      <div className="space-y-3">
-        <Header title="播放器"/>
-        <div className="panel rounded-2xl p-3 space-y-2">
-          <div className="flex gap-2">
-            <input className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10 text-sm" placeholder="粘贴音频直链 https://..." value={audioUrl} onChange={e=>setAudioUrl(e.target.value)}/>
-          </div>
-          <audio controls src={audioUrl||undefined} className="w-full"/>
-        </div>
-      </div>
-    );
-  }
-
-  const ContactsPage=()=>(
-    <div className="space-y-3">
-      <Header title="联系人"/>
-      <div className="panel rounded-2xl p-4 text-sm">先放假数据：G、M、S、T……</div>
-    </div>
-  );
-
-  function BeautyPage({theme,setTheme}){
-    return (
-      <div className="space-y-3">
-        <Header title="美化"/>
-        <div className="rounded-xl border border-white/10 p-3 bg-white/5 space-y-3">
-          <Row label="主题色"><input type="color" value={theme.accent} onChange={e=>{document.documentElement.style.setProperty('--accent', e.target.value); setTheme({...theme,accent:e.target.value})}} className="w-8 h-8 rounded"/></Row>
-          <Row label="模糊"><input type="range" min="0" max="20" value={theme.blur} onChange={e=>setTheme({...theme,blur:+e.target.value})}/> <span className="text-xs opacity-90 w-8 text-right">{theme.blur}</span></Row>
-          <Row label="字体栈"><input className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10" value={theme.font} onChange={e=>setTheme({...theme,font:e.target.value})}/></Row>
-          <Row label="背景类型">
-            <select value={theme.bgType} onChange={e=>setTheme({...theme,bgType:e.target.value})} className="text-xs bg-white/10 px-2 py-1 rounded border border-white/10">
-              <option value="color">纯色背景</option>
-              <option value="image">图片背景</option>
-            </select>
-          </Row>
-          {theme.bgType==='color' ? (
-            <Row label="背景颜色"><input type="color" value={theme.bgColor} onChange={e=>setTheme({...theme,bgColor:e.target.value})} className="w-8 h-8 rounded"/></Row>
-          ) : (
-            <Row label="上传图片">
-              <label className="text-xs btn px-2 py-1 rounded cursor-pointer">上传
-                <input type="file" accept="image/*" className="hidden" onChange={e=>{
-                  const f=e.target.files&&e.target.files[0]; if(!f) return;
-                  const r=new FileReader(); r.onload=()=>setTheme({...theme,bgImage:r.result}); r.readAsDataURL(f);
-                }}/>
-              </label>
-              {theme.bgImage && <button onClick={()=>setTheme({...theme,bgImage:''})} className="ml-2 text-xs px-2 py-1 rounded btn">清除</button>}
-            </Row>
           )}
-        </div>
-      </div>
-    );
-  }
 
-  const Header=({title,children})=>(
-    <div className="flex items-center justify-between">
-      <div className="px-4 py-1.5 rounded-2xl bg-black/50 border border-white/10">{title}</div>
-      <div className="flex items-center gap-2">{children}</div>
-    </div>
-  );
-  const Row=({label,children})=>(<div className="flex items-center gap-3"><div className="w-24 shrink-0 text-xs opacity-90">{label}</div><div className="flex-1 flex items-center flex-wrap gap-2">{children}</div></div>);
+          {tab==='beauty' && (
+            <div className="rounded-xl border border-white/10 p-3 bg-white/5 space-y-3">
+              <Row label="主题色"><input type="color" value={tTheme.accent} onChange={e=>setTTheme({...tTheme,accent:e.target.value})} className="w-8 h-8 rounded"/></Row>
+              <Row label="毛玻璃"><input type="checkbox" checked={tTheme.glass} onChange={e=>setTTheme({...tTheme,glass:e.target.checked})}/></Row>
+              <Row label="模糊"><input type="range" min="0" max="20" value={tTheme.blur} onChange={e=>setTTheme({...tTheme,blur:+e.target.value})}/> <span className="text-xs opacity-70 w-8 text-right">{tTheme.blur}</span></Row>
+            </div>
+          )}
 
-  function Modal({title,onClose,children}){
-    return (
-      <div className="fixed inset-0 z-50">
-        <div className="absolute inset-0 bg-black/50" onClick={onClose}/>
-        <div className="absolute right-0 top-0 h-full w-[88%] max-w-sm bg-black/90 border-l border-white/10 p-3 overflow-auto">
-          <div className="flex items-center justify-between mb-2">
-            <div className="text-sm font-medium">{title}</div>
-            <button className="btn px-2 py-1 rounded text-xs" onClick={onClose}>关闭</button>
+          {tab==='font' && (
+            <div className="rounded-xl border border-white/10 p-3 bg-white/5 space-y-3">
+              <Row label="字体栈"><input value={tTheme.font} onChange={e=>setTTheme({...tTheme,font:e.target.value})} className="flex-1 bg-white/10 rounded px-2 py-1 border border-white/10 focus:outline-none" placeholder="Inter, system-ui, ..."/></Row>
+              <div className="flex flex-wrap gap-2 text-xs">
+                {[
+                  'Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto',
+                  'Noto Serif SC, ui-serif, Georgia, serif',
+                  'LXGW WenKai, system-ui, sans-serif',
+                ].map(f=>(<button key={f} onClick={()=>setTTheme({...tTheme,font:f})} className="px-2 py-1 rounded bg-white/10 border border-white/10 hover:bg-white/15">{f.split(',')[0]}</button>))}
+              </div>
+              <div className="text-xs opacity-80">预览：<span style={{fontFamily:tTheme.font}} className="ml-1">春风十里，不如你。</span></div>
+            </div>
+          )}
+
+          {tab==='background' && (
+            <div className="rounded-xl border border-white/10 p-3 bg-white/5 space-y-3">
+              <Row label="类型">
+                <select value={tTheme.bgType} onChange={e=>setTTheme({...tTheme,bgType:e.target.value})} className="text-xs bg-white/10 px-2 py-1 rounded border border-white/10">
+                  <option value="color">纯色背景</option>
+                  <option value="image">图片背景</option>
+                </select>
+              </Row>
+              {tTheme.bgType==='color' ? (
+                <Row label="颜色"><input type="color" value={tTheme.bgColor} onChange={e=>setTTheme({...tTheme,bgColor:e.target.value})} className="w-8 h-8 rounded"/></Row>
+              ) : (
+                <Row label="图片">
+                  <label className="text-xs bg-white/10 px-2 py-1 rounded border border-white/10 cursor-pointer">上传图片
+                    <input type="file" accept="image/*" className="hidden" onChange={e=>fileToDataURL(e.target.files&&e.target.files[0]).then(url=>setTTheme({...tTheme,bgImage:url||''}))}/>
+                  </label>
+                  {tTheme.bgImage && <button onClick={()=>setTTheme({...tTheme,bgImage:''})} className="ml-2 text-xs px-2 py-1 rounded bg-white/10 border border-white/10">清除</button>}
+                </Row>
+              )}
+              <div className="text-xs opacity-70">提示：这个背景只作用于“手机屏幕内部”。</div>
+            </div>
+          )}
+
+          <div className="flex items-center justify-end gap-2">
+            <button onClick={saveAll} className="text-xs px-3 py-1 rounded bg-[var(--accent)] text-white">保存</button>
           </div>
-          {children}
         </div>
-      </div>
-    );
-  }
+      )
+    }
+    const Row=({label,children})=>(<div className="flex items-center gap-3"><div className="w-20 shrink-0 text-xs opacity-80">{label}</div><div className="flex-1 flex items-center flex-wrap gap-2">{children}</div></div>);
+    const TabButton=({active,onClick,children})=>(<button onClick={onClick} className={`px-3 py-1.5 rounded-lg border text-xs ${active?'bg-white/15 border-white/20':'bg-white/5 border-white/10 hover:bg-white/10'}`}>{children}</button>);
 
-  function UploadJSON({onLoad}){
-    return (
-      <label className="text-xs btn px-2 py-1 rounded cursor-pointer inline-flex items-center gap-2">
-        导入JSON
-        <input type="file" accept=".json,application/json" className="hidden"
-               onChange={async e=>{
-                 const f=e.target.files&&e.target.files[0]; if(!f) return;
-                 try{ const text=await f.text(); const obj=JSON.parse(text); onLoad && onLoad(obj); toast('已加载'); }
-                 catch(err){ toast('解析失败：'+err.message) }
-               }}/>
-      </label>
-    );
-  }
+    /* LLM 简易调用 */
+    async function callLLM(settings,msgs){
+      const m=[]; if(settings.systemPrompt) m.push({role:'system',content:settings.systemPrompt});
+      for(const it of msgs){ m.push({role:it.role==='assistant'?'assistant':'user',content:it.text}); }
+      const url=(settings.apiBase||'https://api.openai.com').replace(/\/$/,'')+'/v1/chat/completions';
+      const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+settings.apiKey},body:JSON.stringify({model:settings.model,messages:m,temperature:settings.temperature??0.6})});
+      if(!res.ok) throw new Error('HTTP '+res.status);
+      const json=await res.json();
+      return (json?.choices?.[0]?.message?.content||'').trim()||'(空回复)';
+    }
+    function localBrain(s){ s=(s||'').toLowerCase(); if(s.includes('音乐')||s.includes('歌')) return '点开播放器, 先把第一首放起来。边听边说。'; if(s.includes('抱')||s.includes('累')||s.includes('难过')) return '过来, 抱一下。别逞强, 先喝口水。'; if(s.includes('老公')) return '我在。别乱想。今天想听什么风格?'; if(s.length<12) return '具体一点, 说说发生了什么。'; return '听到了, 给我 30 秒拼好思路再回你。'; }
 
-  const Placeholder=({title})=>(<div className="space-y-3"><Header title={title}/><div className="panel rounded-2xl p-6 text-sm">这里先占位。</div></div>);
+    /* 冒烟测试 */
+    try{
+      console.assert(typeof uid()==='string' && uid().length>=3, 'uid ok');
+      console.assert(localBrain('音乐推荐').length>0, 'brain ok');
+      console.log('[MiniPhone] ready');
+    }catch(e){ showError(e.message) }
 
-  ReactDOM.createRoot(document.getElementById('app')).render(<App/>);
+    ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
   </script>
 </body>
 </html>
